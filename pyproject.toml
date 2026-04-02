@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raceguard"
+version = "0.2.0"
+authors = [
+  { name="Chukwunwike Obodo" },
+]
+description = "A heuristic-based zero-overhead thread race condition detector for Python."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = []
+keywords = [
+    "debugging", "threads", "race-condition", "concurrency",
+    "lock", "threading", "detector", "heuristic",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/raceguard/raceguard"
+Repository = "https://github.com/raceguard/raceguard"
+Issues = "https://github.com/raceguard/raceguard/issues"
+Changelog = "https://github.com/raceguard/raceguard/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+raceguard = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

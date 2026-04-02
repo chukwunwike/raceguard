@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>raceguard — Thread Race Condition Detection for Python</title>
+  <meta name="description"
+    content="Detect data races in Python threads instantly. Wrap any shared object with protect() and get clear error reports with zero overhead in production.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap"
+    rel="stylesheet">
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #07070e;
+      --bg2: #0c0c18;
+      --surface: #111125;
+      --surface2: #16163a;
+      --border: rgba(255, 255, 255, 0.06);
+      --border2: rgba(255, 255, 255, 0.1);
+      --text: #e0e0f0;
+      --text2: #a0a0c0;
+      --muted: #5a5a80;
+      --dim: #2a2a4e;
+
+      --accent: #ff6b35;
+      --accent2: #ff9a5c;
+      --accent-g: linear-gradient(135deg, #ff6b35, #ff3d6e);
+      --teal: #00e8b8;
+      --teal2: #00b894;
+      --red: #ff3d6e;
+      --purple: #8b5cf6;
+      --blue: #60a5fa;
+
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Inter', -apple-system, sans-serif;
+      --head: 'Space Grotesk', sans-serif;
+
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.7;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Grid Background ── */
+    .grid-bg {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Orb glows ── */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .orb-1 {
+      width: 600px;
+      height: 600px;
+      top: -200px;
+      left: -100px;
+      background: rgba(255, 107, 53, 0.06);
+    }
+
+    .orb-2 {
+      width: 500px;
+      height: 500px;
+      top: 40%;
+      right: -150px;
+      background: rgba(0, 232, 184, 0.04);
+    }
+
+    .orb-3 {
+      width: 400px;
+      height: 400px;
+      bottom: -100px;
+      left: 30%;
+      background: rgba(139, 92, 246, 0.04);
+    }
+
+    /* ── Container ── */
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+
+    .container-sm {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      padding: 0 2rem;
+    }
+
+    .nav-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-blur {
+      position: absolute;
+      inset: 0;
+      background: rgba(7, 7, 14, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      z-index: -1;
+    }
+
+    .nav-brand {
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .nav-brand .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent);
+      animation: pulse 2s ease infinite;
+    }
+
+    .nav-brand span {
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1)
+      }
+
+      50% {
+        opacity: 0.4;
+        transform: scale(0.85)
+      }
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--text);
+    }
+
+    .nav-cta {
+      padding: 0.4rem 1rem;
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 0.82rem !important;
+      color: var(--text) !important;
+      transition: all 0.2s !important;
+    }
+
+    .nav-cta:hover {
+      background: rgba(255, 255, 255, 0.06) !important;
+      border-color: rgba(255, 255, 255, 0.15) !important;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 8rem 2rem 6rem;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    .hero-top {
+      margin-bottom: 5rem;
+    }
+
+    .hero-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.3rem 0.8rem 0.3rem 0.5rem;
+      border-radius: 100px;
+      border: 1px solid var(--border2);
+      background: rgba(255, 255, 255, 0.03);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 2rem;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    .hero-pill .pip {
+      padding: 0.15rem 0.5rem;
+      border-radius: 100px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.68rem;
+    }
+
+    .hero h1 {
+      font-family: var(--head);
+      font-size: clamp(2.6rem, 5.5vw, 4.2rem);
+      font-weight: 700;
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+      margin-bottom: 1.5rem;
+      max-width: 16ch;
+      animation: fadeUp 0.7s ease 0.1s both;
+    }
+
+    .hero h1 .gradient {
+      background: var(--accent-g);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: 1.15rem;
+      color: var(--text2);
+      max-width: 50ch;
+      line-height: 1.8;
+      margin-bottom: 2.5rem;
+      animation: fadeUp 0.7s ease 0.2s both;
+    }
+
+    .hero-sub code {
+      font-family: var(--mono);
+      font-size: 0.88em;
+      padding: 0.12em 0.4em;
+      border-radius: 4px;
+      background: rgba(255, 107, 53, 0.1);
+      color: var(--accent2);
+    }
+
+    .hero-sub .err-code {
+      background: rgba(255, 61, 110, 0.1);
+      color: var(--red);
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 1.2rem;
+      flex-wrap: wrap;
+      animation: fadeUp 0.7s ease 0.35s both;
+    }
+
+    .install-box {
+      display: inline-flex;
+      align-items: stretch;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border2);
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .install-cmd {
+      font-family: var(--mono);
+      font-size: 0.88rem;
+      padding: 0.7rem 1.2rem;
+      color: var(--text);
+      user-select: all;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .install-cmd .dollar {
+      color: var(--muted);
+    }
+
+    .copy-btn {
+      padding: 0.7rem 1rem;
+      border: none;
+      border-left: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .copy-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+    }
+
+    .copy-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .btn-docs {
+      padding: 0.7rem 1.5rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text2);
+      font-family: var(--sans);
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-docs:hover {
+      border-color: var(--border2);
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Hero canvas area */
+    .hero-canvas-wrap {
+      animation: fadeUp 0.8s ease 0.45s both;
+      position: relative;
+    }
+
+    .canvas-card {
+      border-radius: var(--radius);
+      border: 1px solid var(--border2);
+      overflow: hidden;
+      background: var(--surface);
+      box-shadow: 0 0 100px rgba(255, 107, 53, 0.03), 0 30px 80px rgba(0, 0, 0, 0.5);
+    }
+
+    .canvas-bar {
+      padding: 0.6rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg2);
+    }
+
+    .canvas-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .canvas-dot.r {
+      background: #ff5f57;
+    }
+
+    .canvas-dot.y {
+      background: #febc2e;
+    }
+
+    .canvas-dot.g {
+      background: #28c840;
+    }
+
+    .canvas-title {
+      margin-left: auto;
+      margin-right: auto;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    #thread-canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(24px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ── Section common ── */
+    section {
+      position: relative;
+      z-index: 1;
+      scroll-margin-top: 90px;
+    }
+
+    .section-label {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--accent);
+      margin-bottom: 0.8rem;
+    }
+
+    .section-title {
+      font-family: var(--head);
+      font-size: clamp(1.5rem, 2.8vw, 2.2rem);
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1.15;
+      margin-bottom: 0.8rem;
+    }
+
+    .section-desc {
+      color: var(--text2);
+      font-size: 1rem;
+      max-width: 50ch;
+    }
+
+    /* ── Terminal ── */
+    .terminal-section {
+      padding: 0 2rem 8rem;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    .terminal {
+      border-radius: var(--radius);
+      border: 1px solid var(--border2);
+      overflow: hidden;
+      box-shadow: 0 0 80px rgba(255, 61, 110, 0.04), 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    .term-bar {
+      padding: 0.6rem 1rem;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .term-bar .canvas-title {
+      font-size: 0.7rem;
+    }
+
+    .term-body {
+      padding: 1.5rem 1.8rem;
+      background: #030308;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.9;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    .c-dim {
+      color: var(--dim);
+    }
+
+    .c-red {
+      color: var(--red);
+    }
+
+    .c-acc {
+      color: var(--accent2);
+    }
+
+    .c-teal {
+      color: var(--teal);
+    }
+
+    .c-muted {
+      color: var(--muted);
+    }
+
+    .c-text {
+      color: var(--text);
+    }
+
+    .c-rule {
+      color: #1a1a38;
+    }
+
+    /* ── Features ── */
+    .features-section {
+      padding: 6rem 0 8rem;
+    }
+
+    .features-header {
+      margin-bottom: 3.5rem;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .feat {
+      padding: 2.2rem 2rem;
+      background: var(--surface);
+      position: relative;
+      transition: background 0.3s;
+    }
+
+    .feat:hover {
+      background: var(--surface2);
+    }
+
+    .feat-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      margin-bottom: 1.2rem;
+    }
+
+    .feat-icon.orange {
+      background: rgba(255, 107, 53, 0.1);
+      border: 1px solid rgba(255, 107, 53, 0.15);
+    }
+
+    .feat-icon.teal {
+      background: rgba(0, 232, 184, 0.08);
+      border: 1px solid rgba(0, 232, 184, 0.12);
+    }
+
+    .feat-icon.purple {
+      background: rgba(139, 92, 246, 0.08);
+      border: 1px solid rgba(139, 92, 246, 0.12);
+    }
+
+    .feat-icon.red {
+      background: rgba(255, 61, 110, 0.08);
+      border: 1px solid rgba(255, 61, 110, 0.12);
+    }
+
+    .feat-icon.blue {
+      background: rgba(96, 165, 250, 0.08);
+      border: 1px solid rgba(96, 165, 250, 0.12);
+    }
+
+    .feat-icon.green {
+      background: rgba(74, 222, 128, 0.08);
+      border: 1px solid rgba(74, 222, 128, 0.12);
+    }
+
+    .feat-title {
+      font-family: var(--head);
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.6rem;
+    }
+
+    .feat-desc {
+      color: var(--text2);
+      font-size: 0.88rem;
+      line-height: 1.7;
+    }
+
+    .feat-desc code {
+      font-family: var(--mono);
+      font-size: 0.82em;
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+      background: rgba(255, 107, 53, 0.08);
+      color: var(--accent2);
+    }
+
+    /* ── Code Comparison ── */
+    .api-section {
+      padding: 6rem 0 8rem;
+    }
+
+    .api-header {
+      margin-bottom: 3.5rem;
+    }
+
+    .api-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+    }
+
+    .code-card {
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      transition: border-color 0.25s;
+    }
+
+    .code-card:hover {
+      border-color: var(--border2);
+    }
+
+    .code-card.bad {
+      border-color: rgba(255, 61, 110, 0.15);
+    }
+
+    .code-card.good {
+      border-color: rgba(0, 232, 184, 0.12);
+    }
+
+    .code-card.bad:hover {
+      border-color: rgba(255, 61, 110, 0.35);
+    }
+
+    .code-card.good:hover {
+      border-color: rgba(0, 232, 184, 0.28);
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.55rem 1rem;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-label {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .bad .code-label {
+      color: var(--red);
+    }
+
+    .good .code-label {
+      color: var(--teal);
+    }
+
+    .code-lang {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--dim);
+    }
+
+    pre {
+      padding: 1.4rem 1.5rem;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.85;
+      background: #030308;
+      overflow-x: auto;
+      tab-size: 4;
+    }
+
+    .kw {
+      color: #c084fc;
+    }
+
+    .fn {
+      color: #60a5fa;
+    }
+
+    .st {
+      color: #86efac;
+    }
+
+    .cm {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .cl {
+      color: var(--accent2);
+    }
+
+    .nu {
+      color: #fb923c;
+    }
+
+    .de {
+      color: var(--teal);
+    }
+
+    /* ── Algorithm ── */
+    .algo-section {
+      padding: 7rem 0;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .algo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+    }
+
+    .algo-steps {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .algo-step {
+      display: flex;
+      gap: 1.2rem;
+      align-items: flex-start;
+      padding: 1.2rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .algo-step:first-child {
+      padding-top: 0;
+    }
+
+    .algo-step:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .step-idx {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      margin-top: 0.15rem;
+    }
+
+    .step-idx.s1 {
+      background: rgba(0, 232, 184, 0.08);
+      color: var(--teal);
+      border: 1px solid rgba(0, 232, 184, 0.15);
+    }
+
+    .step-idx.s2 {
+      background: rgba(96, 165, 250, 0.08);
+      color: var(--blue);
+      border: 1px solid rgba(96, 165, 250, 0.15);
+    }
+
+    .step-idx.s3 {
+      background: rgba(255, 61, 110, 0.08);
+      color: var(--red);
+      border: 1px solid rgba(255, 61, 110, 0.15);
+    }
+
+    .step-idx.s4 {
+      background: rgba(139, 92, 246, 0.08);
+      color: var(--purple);
+      border: 1px solid rgba(139, 92, 246, 0.15);
+    }
+
+    .step-label {
+      font-family: var(--head);
+      font-weight: 600;
+      font-size: 0.92rem;
+      margin-bottom: 0.3rem;
+    }
+
+    .step-text {
+      color: var(--text2);
+      font-size: 0.88rem;
+      line-height: 1.7;
+    }
+
+    .step-text code {
+      font-family: var(--mono);
+      font-size: 0.82em;
+      padding: 0.08em 0.3em;
+      border-radius: 3px;
+      background: rgba(255, 107, 53, 0.08);
+      color: var(--accent2);
+    }
+
+    .step-text .rc {
+      background: rgba(255, 61, 110, 0.08);
+      color: var(--red);
+    }
+
+    /* Algo diagram */
+    .algo-diagram {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .algo-diagram svg {
+      width: 100%;
+      max-width: 300px;
+      height: auto;
+    }
+
+    /* ── CTA ── */
+    .cta-section {
+      padding: 10rem 2rem;
+      text-align: center;
+    }
+
+    .cta-section h2 {
+      font-family: var(--head);
+      font-size: clamp(1.8rem, 3.2vw, 2.6rem);
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      line-height: 1.12;
+      margin-bottom: 1rem;
+    }
+
+    .cta-section h2 .gradient {
+      background: var(--accent-g);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .cta-section p {
+      color: var(--text2);
+      margin-bottom: 2.5rem;
+      font-size: 1.05rem;
+      max-width: 44ch;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .cta-install {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 2.5rem;
+    }
+
+    .cta-links {
+      display: flex;
+      gap: 2.5rem;
+      justify-content: center;
+    }
+
+    .cta-link {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .cta-link:hover {
+      color: var(--text);
+    }
+
+    .cta-link span {
+      margin-left: 0.3rem;
+    }
+
+    /* ── Footer ── */
+    footer {
+      position: relative;
+      z-index: 1;
+      padding: 1.8rem 2rem;
+      border-top: 1px solid var(--border);
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer-brand {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .footer-brand strong {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .footer-meta {
+      color: var(--dim);
+      font-size: 0.75rem;
+      font-family: var(--mono);
+    }
+
+    /* ── Scroll Reveal ── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .hero h1 {
+        font-size: clamp(2rem, 6vw, 3rem);
+      }
+
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .api-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .algo-grid {
+        grid-template-columns: 1fr;
+        gap: 3rem;
+      }
+
+      .algo-diagram {
+        order: -1;
+      }
+
+      .algo-diagram svg {
+        max-width: 240px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .nav-links a:not(.nav-cta) {
+        display: none;
+      }
+
+      .hero {
+        padding: 7rem 1rem 4rem;
+      }
+
+      .hero-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .install-box {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .btn-docs {
+        text-align: center;
+      }
+
+      .terminal-section {
+        padding: 0 1rem 5rem;
+      }
+
+      .features-section,
+      .api-section {
+        padding-left: 0;
+        padding-right: 0;
+      }
+
+      .container,
+      .container-sm {
+        padding: 0 1rem;
+      }
+
+      .cta-section {
+        padding: 6rem 1rem;
+      }
+
+      footer {
+        flex-direction: column;
+        gap: 0.5rem;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="grid-bg"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
+  <!-- ── NAV ── -->
+  <nav>
+    <div class="nav-blur"></div>
+    <div class="nav-inner">
+      <div class="nav-brand">
+        <span class="dot"></span>
+        race<span>guard</span>
+      </div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#api">API</a>
+        <a href="#algorithm">How it works</a>
+        <a href="https://github.com" target="_blank" class="nav-cta">GitHub ↗</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── HERO ── -->
+  <section class="hero">
+    <div class="hero-top">
+      <div class="hero-pill"><span class="pip">NEW</span> v0.2.0 — Production-ready race detector</div>
+      <h1>Find data races<br><span class="gradient">before they find you.</span></h1>
+      <p class="hero-sub">
+        Wrap any shared object with <code>protect()</code>. Unsynchronized concurrent
+        access instantly throws a <code class="err-code">RaceConditionError</code>
+        — with thread names, timing, and fix instructions. Zero overhead in production.
+      </p>
+      <div class="hero-actions">
+        <div class="install-box">
+          <span class="install-cmd"><span class="dollar">$</span> pip install raceguard</span>
+          <button class="copy-btn" onclick="copyCmd()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+            </svg>
+            copy
+          </button>
+        </div>
+        <a href="#api" class="btn-docs">View API →</a>
+      </div>
+    </div>
+
+    <div class="hero-canvas-wrap">
+      <div class="canvas-card">
+        <div class="canvas-bar">
+          <div class="canvas-dot r"></div>
+          <div class="canvas-dot y"></div>
+          <div class="canvas-dot g"></div>
+          <span class="canvas-title">thread simulation — live</span>
+        </div>
+        <canvas id="thread-canvas" width="1160" height="320"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── TERMINAL DEMO ── -->
+  <div class="terminal-section reveal">
+    <div class="section-label">Error output</div>
+    <div class="terminal">
+      <div class="term-bar">
+        <div class="canvas-dot r"></div>
+        <div class="canvas-dot y"></div>
+        <div class="canvas-dot g"></div>
+        <span class="canvas-title">python main.py</span>
+      </div>
+      <div class="term-body"><span class="c-dim">Traceback (most recent call last):
+          File "main.py", line 14, in worker
+          shared_list.append(item)</span>
+        <span class="c-red">raceguard.RaceConditionError:</span>
+        <span class="c-rule">────────────────────────────────────────────────────────────</span>
+        <span class="c-text"> Race condition detected!</span>
+        <span class="c-rule">────────────────────────────────────────────────────────────</span>
+        <span class="c-muted"> Object : </span><span class="c-acc">list</span><span class="c-muted"> → [0, 1, 2, 3, 4,
+          5, …]</span>
+        <span class="c-muted"> Operation : </span><span class="c-text">write</span><span class="c-muted"> (previous was
+          write)</span>
+        <span class="c-muted"> Current thread : </span><span class="c-acc">'Writer-2'</span>
+        <span class="c-muted"> Previous thread : </span><span class="c-acc">'Writer-1'</span>
+        <span class="c-muted"> Time gap : </span><span class="c-text">2.41 ms</span><span class="c-dim"> (window: 10
+          ms)</span>
+        <span class="c-muted"> Lock held : </span><span class="c-red">No</span>
+        <span class="c-rule">────────────────────────────────────────────────────────────</span>
+        <span class="c-muted"> Fix: wrap the access in </span><span class="c-teal">'with locked(obj):'</span>
+        <span class="c-muted"> or decorate with </span><span class="c-teal">@with_lock(obj)</span><span
+          class="c-muted">.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FEATURES ── -->
+  <section class="features-section" id="features">
+    <div class="container">
+      <div class="features-header reveal">
+        <div class="section-label">Why raceguard</div>
+        <div class="section-title">Detect. Understand. Fix.</div>
+        <div class="section-desc">No manual instrumentation. No post-mortem guesswork. One line of code.</div>
+      </div>
+      <div class="features-grid reveal">
+        <div class="feat">
+          <div class="feat-icon orange">⚡</div>
+          <div class="feat-title">Instant detection</div>
+          <div class="feat-desc">
+            Raises the moment two threads access the same object within the race window
+            without holding a lock. Works on <code>list</code>, <code>dict</code>, <code>set</code>,
+            and any custom object.
+          </div>
+        </div>
+        <div class="feat">
+          <div class="feat-icon teal">🔒</div>
+          <div class="feat-title">Lock-aware heuristic</div>
+          <div class="feat-desc">
+            Tracks whether the previous access was under a lock. If it was, the next
+            access — even lockless — is correctly deemed safe. Zero false positives.
+          </div>
+        </div>
+        <div class="feat">
+          <div class="feat-icon purple">🎯</div>
+          <div class="feat-title">One line. Any object.</div>
+          <div class="feat-desc">
+            <code>data = protect([])</code> — that's it. With full support for 20+ Python dunder methods and Context
+            Managers, the proxy behaves completely transparently.
+          </div>
+        </div>
+        <div class="feat">
+          <div class="feat-icon red">🛡️</div>
+          <div class="feat-title">Production safe</div>
+          <div class="feat-desc">
+            Features a <strong>50x faster</strong> core engine and new non-crashing <code>warn</code>/<code>log</code>
+            modes. Set <code>RACEGUARD_ENABLED=0</code> for a true zero-overhead passthrough.
+          </div>
+        </div>
+        <div class="feat">
+          <div class="feat-icon blue">📖</div>
+          <div class="feat-title">Rich error reports</div>
+          <div class="feat-desc">
+            Every error includes thread names, timing data, operation type, and
+            a specific fix suggestion — so you know exactly what to do next.
+          </div>
+        </div>
+        <div class="feat">
+          <div class="feat-icon green">🧱</div>
+          <div class="feat-title">Type safety built-in</div>
+          <div class="feat-desc">
+            Refuses to wrap immutable primitives (<code>int</code>, <code>str</code>,
+            <code>tuple</code>) to prevent semantic bugs. Wrap them universally via the <code>Value</code> wrapper
+            instead.
+          </div>
+        </div>
+        <div class="feat">
+          <div class="feat-icon purple">⏱️</div>
+          <div class="feat-title">Strict Mode</div>
+          <div class="feat-desc">
+            Use <code>configure(strict=True)</code> to bypass the time heuristic and catch un-synchronized lockless
+            accesses regardless of time delays.
+          </div>
+        </div>
+        <div class="feat">
+          <div class="feat-icon teal">🔄</div>
+          <div class="feat-title">Asyncio Tracking</div>
+          <div class="feat-desc">
+            Seamlessly tracks underlying <code>asyncio</code> task identities to catch thread interleaving between pure
+            async tasks on the event loop.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── API ── -->
+  <section class="api-section" id="api">
+    <div class="container">
+      <div class="api-header reveal">
+        <div class="section-label">API</div>
+        <div class="section-title">Drop in. No refactor.</div>
+        <div class="section-desc">Wrap → guard → ship. The whole API fits in your head.</div>
+      </div>
+      <div class="api-grid">
+        <div class="code-card bad reveal">
+          <div class="code-header">
+            <span class="code-label">✗ without raceguard</span>
+            <span class="code-lang">python</span>
+          </div>
+          <pre><span class="kw">import</span> threading
+
+results = []  <span class="cm"># shared, unprotected</span>
+
+<span class="kw">def</span> <span class="fn">worker</span>(x):
+    results.append(x)
+    <span class="cm"># silent data corruption in prod</span>
+
+threads = [
+    threading.Thread(target=<span class="fn">worker</span>, args=(i,))
+    <span class="kw">for</span> i <span class="kw">in</span> range(<span class="nu">10</span>)
+]
+<span class="kw">for</span> t <span class="kw">in</span> threads: t.start()
+<span class="kw">for</span> t <span class="kw">in</span> threads: t.join()
+<span class="cm"># bug impossible to reproduce reliably</span></pre>
+        </div>
+        <div class="code-card good reveal">
+          <div class="code-header">
+            <span class="code-label">✓ with raceguard</span>
+            <span class="code-lang">python</span>
+          </div>
+          <pre><span class="kw">import</span> threading
+<span class="kw">from</span> raceguard <span class="kw">import</span> protect, with_lock
+
+results = <span class="fn">protect</span>([])  <span class="cm"># ← one change</span>
+
+<span class="de">@with_lock</span>(results)
+<span class="kw">def</span> <span class="fn">worker</span>(x):
+    results.append(x)  <span class="cm"># lock held → safe</span>
+
+threads = [
+    threading.Thread(target=<span class="fn">worker</span>, args=(i,))
+    <span class="kw">for</span> i <span class="kw">in</span> range(<span class="nu">10</span>)
+]
+<span class="kw">for</span> t <span class="kw">in</span> threads: t.start()
+<span class="kw">for</span> t <span class="kw">in</span> threads: t.join()</pre>
+        </div>
+        <div class="code-card good reveal">
+          <div class="code-header">
+            <span class="code-label">context manager + shared lock</span>
+            <span class="code-lang">python</span>
+          </div>
+          <pre><span class="kw">from</span> raceguard <span class="kw">import</span> protect, locked
+
+shared = <span class="fn">protect</span>({<span class="st">'count'</span>: <span class="nu">0</span>})
+
+<span class="kw">def</span> <span class="fn">increment</span>():
+    <span class="kw">for</span> _ <span class="kw">in</span> range(<span class="nu">1000</span>):
+        <span class="kw">with</span> <span class="fn">locked</span>(shared):
+            shared[<span class="st">'count'</span>] += <span class="nu">1</span>
+
+<span class="cm"># two objects, one external lock</span>
+ext = threading.Lock()
+a = <span class="fn">protect</span>([], lock=ext)
+b = <span class="fn">protect</span>({}, lock=ext)</pre>
+        </div>
+        <div class="code-card good reveal">
+          <div class="code-header">
+            <span class="code-label">custom objects + production toggle</span>
+            <span class="code-lang">python</span>
+          </div>
+          <pre><span class="kw">from</span> raceguard <span class="kw">import</span> protect, with_lock, configure
+
+<span class="kw">class</span> <span class="cl">Counter</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self): self.value = <span class="nu">0</span>
+    <span class="kw">def</span> <span class="fn">increment</span>(self): self.value += <span class="nu">1</span>
+
+c = <span class="fn">protect</span>(<span class="cl">Counter</span>())
+
+<span class="de">@with_lock</span>(c)
+<span class="kw">def</span> <span class="fn">safe_inc</span>():
+    c.increment()  <span class="cm"># attribute read proxied</span>
+
+<span class="cm"># log, warn, or raise (default)</span>
+<span class="fn">configure</span>(mode=<span class="st">"log"</span>)
+
+<span class="cm"># true zero-overhead passthrough</span>
+<span class="fn">configure</span>(enabled=<span class="kw">False</span>)</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ALGORITHM ── -->
+  <section class="algo-section" id="algorithm">
+    <div class="container">
+      <div class="algo-grid">
+        <div class="reveal">
+          <div class="section-label">Detection algorithm</div>
+          <div class="section-title" style="margin-bottom:2rem;">How <code
+              style="font-family:var(--mono);font-size:0.85em;color:var(--accent)">_rg_check()</code> decides.</div>
+          <ul class="algo-steps">
+            <li class="algo-step">
+              <div class="step-idx s1">①</div>
+              <div class="step-body">
+                <div class="step-label">Same thread?</div>
+                <div class="step-text">Always safe. Re-entrant access by one thread can never race with itself.</div>
+              </div>
+            </li>
+            <li class="algo-step">
+              <div class="step-idx s2">②</div>
+              <div class="step-body">
+                <div class="step-label">Previous access locked?</div>
+                <div class="step-text">Safe. A lock-protected write commits state atomically — the next reader sees a
+                  consistent snapshot.</div>
+              </div>
+            </li>
+            <li class="algo-step">
+              <div class="step-idx s3">③</div>
+              <div class="step-body">
+                <div class="step-label">Both lockless + within window?</div>
+                <div class="step-text">→ <code class="rc">RaceConditionError</code>. Two unguarded threads touching the
+                  same object in rapid succession.</div>
+              </div>
+            </li>
+            <li class="algo-step">
+              <div class="step-idx s4">④</div>
+              <div class="step-body">
+                <div class="step-label">Far apart in time?</div>
+                <div class="step-text">Safe. Separated by more than <code>race_window</code> (default 10 ms), treated as
+                  sequential.</div>
+              </div>
+            </li>
+          </ul>
+        </div>
+        <div class="algo-diagram reveal">
+          <svg viewBox="0 0 300 440" fill="none">
+            <!-- Connectors -->
+            <line x1="150" y1="48" x2="150" y2="78" stroke="#1a1a38" stroke-width="1.5" />
+            <line x1="150" y1="128" x2="150" y2="158" stroke="#1a1a38" stroke-width="1.5" />
+            <line x1="88" y1="103" x2="38" y2="168" stroke="#1a1a38" stroke-width="1.5" />
+            <line x1="150" y1="208" x2="150" y2="238" stroke="#1a1a38" stroke-width="1.5" />
+            <line x1="88" y1="183" x2="38" y2="248" stroke="#1a1a38" stroke-width="1.5" />
+            <line x1="150" y1="288" x2="150" y2="318" stroke="#1a1a38" stroke-width="1.5" />
+            <line x1="88" y1="263" x2="38" y2="328" stroke="#1a1a38" stroke-width="1.5" />
+            <line x1="212" y1="263" x2="258" y2="318" stroke="#ff3d6e" stroke-width="1.5" stroke-dasharray="4,3" />
+
+            <!-- START -->
+            <rect x="75" y="10" width="150" height="38" rx="8" fill="#111125" stroke="#1a1a38" stroke-width="1" />
+            <text x="150" y="34" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="11"
+              font-weight="600" fill="#e0e0f0">_rg_check(mode)</text>
+
+            <!-- ① same thread? -->
+            <polygon points="150,78 220,103 150,128 80,103" fill="#111125" stroke="#1a1a38" stroke-width="1" />
+            <text x="150" y="99" text-anchor="middle" font-family="'Inter',sans-serif" font-size="10"
+              fill="#5a5a80">same thread?</text>
+            <text x="28" y="145" font-family="'Inter',sans-serif" font-size="9" fill="#5a5a80"
+              font-weight="500">yes</text>
+            <text x="182" y="146" font-family="'Inter',sans-serif" font-size="9" fill="#5a5a80"
+              font-weight="500">no</text>
+            <rect x="8" y="168" width="60" height="26" rx="6" fill="rgba(0,232,184,0.06)" stroke="#00e8b8"
+              stroke-width="1" />
+            <text x="38" y="186" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9"
+              font-weight="600" fill="#00e8b8">safe ✓</text>
+
+            <!-- ② last locked? -->
+            <polygon points="150,158 220,183 150,208 80,183" fill="#111125" stroke="#1a1a38" stroke-width="1" />
+            <text x="150" y="179" text-anchor="middle" font-family="'Inter',sans-serif" font-size="10"
+              fill="#5a5a80">last locked?</text>
+            <text x="28" y="225" font-family="'Inter',sans-serif" font-size="9" fill="#5a5a80"
+              font-weight="500">yes</text>
+            <text x="182" y="226" font-family="'Inter',sans-serif" font-size="9" fill="#5a5a80"
+              font-weight="500">no</text>
+            <rect x="8" y="248" width="60" height="26" rx="6" fill="rgba(0,232,184,0.06)" stroke="#00e8b8"
+              stroke-width="1" />
+            <text x="38" y="266" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9"
+              font-weight="600" fill="#00e8b8">safe ✓</text>
+
+            <!-- ③ within window? -->
+            <polygon points="150,238 220,263 150,288 80,263" fill="#111125" stroke="#1a1a38" stroke-width="1" />
+            <text x="150" y="259" text-anchor="middle" font-family="'Inter',sans-serif" font-size="9.5"
+              fill="#5a5a80">within window?</text>
+            <text x="28" y="305" font-family="'Inter',sans-serif" font-size="9" fill="#5a5a80"
+              font-weight="500">no</text>
+            <text x="230" y="305" font-family="'Inter',sans-serif" font-size="9" fill="#5a5a80"
+              font-weight="500">yes</text>
+
+            <rect x="8" y="328" width="60" height="26" rx="6" fill="rgba(0,232,184,0.06)" stroke="#00e8b8"
+              stroke-width="1" />
+            <text x="38" y="346" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9"
+              font-weight="600" fill="#00e8b8">safe ✓</text>
+
+            <!-- RACE -->
+            <rect x="228" y="318" width="70" height="28" rx="6" fill="rgba(255,61,110,0.08)" stroke="#ff3d6e"
+              stroke-width="1" />
+            <text x="263" y="337" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9"
+              font-weight="700" fill="#ff3d6e">RACE ✗</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ── -->
+  <section class="cta-section">
+    <h2>Stop guessing.<br>Start <span class="gradient">detecting.</span></h2>
+    <p>One import. One function call. Ship threading bugs to the grave.</p>
+    <div class="cta-install">
+      <div class="install-box">
+        <span class="install-cmd"><span class="dollar">$</span> pip install raceguard</span>
+        <button class="copy-btn" onclick="copyCmd()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" />
+            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+          </svg>
+          copy
+        </button>
+      </div>
+    </div>
+    <div class="cta-links">
+      <a class="cta-link" href="https://github.com" target="_blank">GitHub <span>↗</span></a>
+      <a class="cta-link" href="#api">API reference <span>→</span></a>
+      <a class="cta-link" href="https://pypi.org" target="_blank">PyPI <span>↗</span></a>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer>
+    <div class="footer-brand"><strong>race</strong>guard</div>
+    <div class="footer-meta">MIT License · v0.2.0 · Python ≥3.7</div>
+  </footer>
+
+  <script>
+    // ── Copy command ──
+    function copyCmd() {
+      navigator.clipboard.writeText('pip install raceguard').then(() => {
+        document.querySelectorAll('.copy-btn').forEach(b => {
+          b.textContent = '✓ copied';
+          setTimeout(() => { b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> copy'; }, 1800);
+        });
+      });
+    }
+
+    // ── Scroll Reveal ──
+    const reveals = document.querySelectorAll('.reveal');
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); revealObserver.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    reveals.forEach(el => revealObserver.observe(el));
+
+    // ── Thread Canvas Animation ──
+    (function () {
+      const c = document.getElementById('thread-canvas');
+      if (!c) return;
+      const ctx = c.getContext('2d');
+      const W = c.width, H = c.height;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      c.width = W * dpr;
+      c.height = H * dpr;
+      c.style.width = W + 'px';
+      c.style.height = H + 'px';
+      ctx.scale(dpr, dpr);
+
+      const THREADS = [
+        { label: 'Thread-A', color: '#ff6b35', y: 70, segments: [], phase: 0 },
+        { label: 'Thread-B', color: '#00e8b8', y: 150, segments: [], phase: 2.1 },
+        { label: 'Thread-C', color: '#8b5cf6', y: 230, segments: [], phase: 4.2 },
+      ];
+      const SPEED = 1.8;
+      let time = 0;
+      let clashes = [];
+
+      function tick() {
+        time += 0.016;
+        ctx.clearRect(0, 0, W, H);
+
+        // Background
+        ctx.fillStyle = '#08080f';
+        ctx.fillRect(0, 0, W, H);
+
+        // Gridlines
+        ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+        for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+        // Timeline
+        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+        ctx.lineWidth = 1;
+        THREADS.forEach(t => {
+          ctx.beginPath();
+          ctx.moveTo(100, t.y);
+          ctx.lineTo(W - 20, t.y);
+          ctx.stroke();
+        });
+
+        // Labels
+        ctx.font = '500 11px "JetBrains Mono", monospace';
+        THREADS.forEach(t => {
+          ctx.fillStyle = t.color;
+          ctx.globalAlpha = 0.7;
+          ctx.fillText(t.label, 12, t.y + 4);
+          ctx.globalAlpha = 1;
+        });
+
+        // Generate segments
+        THREADS.forEach(t => {
+          const freq = 0.7 + Math.sin(time * 0.3 + t.phase) * 0.3;
+          const active = Math.sin(time * freq + t.phase) > 0.15;
+          if (active) {
+            const x = 100 + ((time * SPEED * 60 + t.phase * 30) % (W - 140));
+            const w = 30 + Math.sin(time * 2 + t.phase) * 15;
+            t.segments.push({ x, w, alpha: 1 });
+          }
+          // Draw segments
+          t.segments.forEach((s, i) => {
+            s.alpha *= 0.992;
+            ctx.fillStyle = t.color;
+            ctx.globalAlpha = s.alpha * 0.35;
+            ctx.fillRect(s.x, t.y - 6, s.w, 12);
+            ctx.globalAlpha = s.alpha * 0.9;
+            ctx.fillRect(s.x, t.y - 2, s.w, 4);
+          });
+          ctx.globalAlpha = 1;
+          t.segments = t.segments.filter(s => s.alpha > 0.04);
+        });
+
+        // Detect overlaps → flash (rate-limited and optimized)
+        for (let i = 0; i < THREADS.length; i++) {
+          for (let j = i + 1; j < THREADS.length; j++) {
+            const a = THREADS[i], b = THREADS[j];
+            const sa = a.segments[a.segments.length - 1];
+            const sb = b.segments[b.segments.length - 1];
+            if (sa && sb && sa.alpha > 0.8 && sb.alpha > 0.8 && Math.abs(sa.x - sb.x) < 25) {
+              const isDuplicate = clashes.some(c => Math.abs(c.x - sa.x) < 30 && c.life > 0.5);
+              if (!isDuplicate && clashes.length < 15) {
+                clashes.push({ x: (sa.x + sb.x) / 2 + 15, y1: a.y, y2: b.y, life: 1 });
+              }
+            }
+          }
+        }
+
+        // Draw clashes
+        clashes.forEach(cl => {
+          cl.life *= 0.96;
+          ctx.save();
+          ctx.strokeStyle = '#ff3d6e';
+          ctx.globalAlpha = cl.life * 0.6;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 4]);
+          ctx.beginPath();
+          ctx.moveTo(cl.x, cl.y1);
+          ctx.lineTo(cl.x, cl.y2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Clash icon
+          ctx.globalAlpha = cl.life * 0.85;
+          ctx.fillStyle = '#ff3d6e';
+          ctx.font = '700 11px "JetBrains Mono", monospace';
+          const midY = (cl.y1 + cl.y2) / 2;
+          ctx.fillText('RACE', cl.x - 15, midY + 3);
+
+          // Glow
+          const grad = ctx.createRadialGradient(cl.x, midY, 0, cl.x, midY, 30);
+          grad.addColorStop(0, 'rgba(255,61,110,' + (cl.life * 0.15) + ')');
+          grad.addColorStop(1, 'rgba(255,61,110,0)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(cl.x - 30, midY - 30, 60, 60);
+
+          ctx.restore();
+        });
+        clashes = clashes.filter(cl => cl.life > 0.03);
+
+        // Legend
+        ctx.font = '400 10px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#2a2a4e';
+        ctx.fillText('time →', W - 60, H - 12);
+
+        requestAnimationFrame(tick);
+      }
+      tick();
+    })();
+  </script>
+
+</body>
+
+</html>
