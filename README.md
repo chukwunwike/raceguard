@@ -112,6 +112,32 @@ Typical usage patterns:
 
 ---
 
+## Usage Patterns
+
+```python
+import threading
+from raceguard import protect, with_lock, locked
+
+# 1. Protect a shared mutable object
+shared_list = protect([])
+
+# 2. Access unsafely (Will throw RaceConditionError if races occur)
+def unsafe_worker():
+    shared_list.append(1) 
+
+# 3. Access Safely via Context Manager
+def safe_worker_ctx():
+    with locked(shared_list):
+        shared_list.append(1)
+
+# 4. Access Safely via Decorator
+@with_lock(shared_list)
+def safe_worker_dec():
+    shared_list.append(1)
+```
+
+---
+
 ## Detection Boundaries
 
 While Raceguard is powerful for hunting in-memory thread races, we prioritize clarity on its limits:
