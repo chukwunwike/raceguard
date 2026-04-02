@@ -52,10 +52,15 @@ def safe_worker_dec():
     shared_list.append(1)
 ```
 
-## Limitations & Architecture
-- By default, it operates on a heuristic based on time proximity, meaning you generally rely on the execution scheduler to interleave execution, unless explicitly running with `configure(strict=True)`.
-- Explicitly tracks concurrent multi-threading accesses including standard Python `asyncio` tasks across asynchronous event loops. (Note: does not cross `multiprocessing` memory segment bounds).
-- Intentionally skips wrapping immutable primitives directly (`int`, `str`, `float`, `tuple`) to maintain fundamental Python language semantics. Instead, wrap the primitive inside the explicitly provided `raceguard.Value` wrapper.
+## Detection Boundaries & Limitations
+
+While `raceguard` is a powerful tool for hunting in-memory thread races, it is important to understand its boundaries:
+
+1.  **Python-Level Only**: It tracks access through the Python object model. It **cannot** detect data races happening inside compiled C-extensions (like OpenSSL in the `ssl` module) because those bypass Python's `__getattribute__` system.
+2.  **In-Process Only**: It detects races between threads/tasks in the **same memory space**. It does not track races across different OS processes (e.g., `multiprocessing` or database state).
+3.  **No OS State Tracking**: It does not track race conditions involving OS-level primitives like PIDs, File Descriptors, or File System entries (TOCTOU).
+4.  **Heuristic Window**: By default, it relies on a timing window (10ms). While `configure(strict=True)` improves this, very rare interleavings might still require multiple runs to surface.
+5.  **Object Identity**: Python provides no way to hook the `is` operator or `id()`. If you need to check the identity of the underlying data, use `raceguard.unbind(obj)`.
 
 ## Author
 
