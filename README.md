@@ -1,6 +1,9 @@
 # raceguard
 
+**[View Live Showcase & Docs ↗](https://chukwunwike.github.io/raceguard/)**
+
 Raceguard is a pragmatic, zero-overhead production-ready library for hunting down threading bugs in Python by detecting un-synchronized concurrent access to shared mutable objects.
+
 
 ## The Problem
 Python threading bugs often cause silent data corruption or unpredictable behavior due to race conditions. Typical tools slow down your execution massively or require writing complex annotations.
