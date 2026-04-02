@@ -1,70 +1,132 @@
-# raceguard
+# Raceguard
+
+**Detect real data races in your code before they become production bugs.**
 
 **[View Live Showcase & Docs ↗](https://chukwunwike.github.io/raceguard/)**
 
-Raceguard is a pragmatic, zero-overhead production-ready library for hunting down threading bugs in Python by detecting un-synchronized concurrent access to shared mutable objects.
+Raceguard is a runtime concurrency safety tool that observes your program execution and flags unsafe memory access patterns across threads and async tasks, without requiring compiler support or complex setup.
 
+---
 
 ## The Problem
-Python threading bugs often cause silent data corruption or unpredictable behavior due to race conditions. Typical tools slow down your execution massively or require writing complex annotations.
 
-## The Solution
-Wrap any shared object with `protect()`. Whenever two threads access it concurrently without a lock, a `RaceConditionError` is thrown, indicating exactly the thread names, time gap, and operation.
+Concurrency bugs are some of the hardest issues to detect and fix.
 
-Crucially, **raceguard is designed for production**:
-In production, setting `RACEGUARD_ENABLED=0` guarantees that `protect()` returns the raw, original object with exactly **zero overhead**. 
-This eliminates performance penalties and ensures 100% C-extension compatibility in live environments.
+They are:
+*   **Non-deterministic**: Bugs appear randomly and are hard to pin down.
+*   **Invisible**: They often hide until high-traffic production environments.
+*   **Corrupting**: They cause silent data corruption that is painful to debug.
 
-## Features
-- **Smart lock-aware heuristic**: Avoids false positives by recognizing when a previous write was synchronized.
-- **Zero-Friction**: Disabled globally via `RACEGUARD_ENABLED=0` or `configure(enabled=False)`, converting protections to a zero-overhead passthrough.
-- **Asyncio Tracking**: Tracks underlying `asyncio` task identities directly within standard loops to seamlessly identify thread interleaving between pure async tasks.
-- **Strict Mode**: Use `configure(strict=True)` to bypass the lenient time heuristic and catch un-synchronized lockless accesses regardless of time delays.
-- **Primitive Value Wrapper**: Provides a custom `Value` wrapper for protecting and updating immutable semantic types natively without having to resort to wrapping standard primitives in dictionaries.
+Most developers only discover race conditions after something breaks. Existing tools are often too complex, slow, or invasive for everyday workflows.
+
+---
+
+## What Raceguard Does
+
+Raceguard watches your shared objects as they are accessed and detects:
+*   **Concurrent writes** to the same memory space.
+*   **Read/Write conflicts** across threads or async flows.
+*   **Unsafe shared state access** without proper synchronization.
+
+It surfaces these issues immediately with clear, actionable output.
+
+---
+
+## Quick Example
+
+### Problematic code
+
+```python
+import threading
+
+# A shared list that multiple threads will update
+counter = []
+
+def increment():
+    for _ in range(1000):
+        counter.append(1)
+
+threads = [threading.Thread(target=increment) for _ in range(10)]
+for t in threads: t.start()
+for t in threads: t.join()
+```
+
+### Protected with Raceguard
+
+```python
+from raceguard import protect, locked
+
+# Just wrap your shared object
+counter = protect([])
+
+def increment():
+    for _ in range(1000):
+        # Access safely via context manager
+        with locked(counter):
+            counter.append(1)
+
+# ... rest of the code ...
+```
+
+If you forget the `with locked(counter):` block, Raceguard will instantly throw a `RaceConditionError` with a full report.
+
+---
+
+## Why Raceguard Is Different
+
+Raceguard is designed for **real developer workflows**, not just theory.
+
+*   **Zero Production Overhead**: Set `RACEGUARD_ENABLED=0` to completely bypass the proxy in live environments.
+*   **Async-Aware**: Seamlessly tracks races between mixed `asyncio` tasks and standard threads.
+*   **Deep Protection**: Automatically proxies nested mutable structures (e.g., a dictionary containing lists).
+*   **Rich Reports**: Tells you exactly which threads accessed the object, at what time, and where to fix it.
+
+---
+
+## How It Works (Simple Mental Model)
+
+Think of Raceguard as a **Synchronization Observer**.
+
+1.  **Wrap**: You wrap a shared object with `protect()`.
+2.  **Track**: It records the identity of every thread or task that touches the object.
+3.  **Validate**: It checks if a lock is held when the same memory is accessed.
+4.  **Report**: If two threads touch the same data too quickly without a lock, it flags the conflict.
+
+---
 
 ## Installation
 
 ```bash
-pip install .
+pip install raceguard
 ```
 
-## Usage
+---
 
-```python
-import threading
-from raceguard import protect, with_lock, locked
+## Deployment & Usage
 
-# 1. Protect a mutable container
-shared_list = protect([])
+Typical usage patterns:
 
-# 2. Access unsafely (Will throw RaceConditionError if races are detected)
-def unsafe_worker():
-    shared_list.append(1) 
+*   **Development**: Run with `configure(mode="raise")` to catch bugs during local testing.
+*   **Continuous Integration**: Use `configure(strict=True)` in CI to ensure zero concurrency regressions.
+*   **Production**: Set `RACEGUARD_ENABLED=0` for a true zero-cost passthrough of your original objects.
 
-# 3. Access Safely via Context Manager
-def safe_worker_ctx():
-    with locked(shared_list):
-        shared_list.append(1)
+---
 
-# 4. Access Safely via Decorator
-@with_lock(shared_list)
-def safe_worker_dec():
-    shared_list.append(1)
-```
+## Detection Boundaries
 
-## Detection Boundaries & Limitations
+While Raceguard is powerful for hunting in-memory thread races, we prioritize clarity on its limits:
 
-While `raceguard` is a powerful tool for hunting in-memory thread races, it is important to understand its boundaries:
+1.  **Python-Level Only**: Tracks access through the Python object model. It cannot see races happening inside compiled C-extensions (like OpenSSL).
+2.  **In-Process**: Detects races in the same memory space. Does not track `multiprocessing` memory boundaries.
+3.  **Object Identity**: Use `raceguard.unbind(obj)` if you need the raw underlying object for identity checks.
 
-1.  **Python-Level Only**: It tracks access through the Python object model. It **cannot** detect data races happening inside compiled C-extensions (like OpenSSL in the `ssl` module) because those bypass Python's `__getattribute__` system.
-2.  **In-Process Only**: It detects races between threads/tasks in the **same memory space**. It does not track races across different OS processes (e.g., `multiprocessing` or database state).
-3.  **No OS State Tracking**: It does not track race conditions involving OS-level primitives like PIDs, File Descriptors, or File System entries (TOCTOU).
-4.  **Heuristic Window**: By default, it relies on a timing window (10ms). While `configure(strict=True)` improves this, very rare interleavings might still require multiple runs to surface.
-5.  **Object Identity**: Python provides no way to hook the `is` operator or `id()`. If you need to check the identity of the underlying data, use `raceguard.unbind(obj)`.
+---
 
 ## Author
 
 Developed by **Chukwunwike Obodo**.
+
+---
 
 ## License
 
