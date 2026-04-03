@@ -62,12 +62,13 @@ class TestFinalBossEdgeCases:
         configure(mode="raise")
         
         class WebService:
-            config = {"port": 8080}
+            # Class-level attribute
+            port = 8080
             
             def handle(self):
-                return self.config["port"]
+                return self.port
 
-        # Protect the CLASS object's dict/attributes
+        # Protect the CLASS object's attributes directly!
         ProtectedWebService = protect(WebService)
         
         races_caught = 0
@@ -77,9 +78,10 @@ class TestFinalBossEdgeCases:
             try:
                 # One thread tries to mutate the class-level config directly
                 # while another thread does it too
-                current_port = ProtectedWebService.config["port"]
+                # This tests `__getattr__` and `__setattr__` on a CLASS proxy
+                current_port = ProtectedWebService.port
                 time.sleep(0.001)
-                ProtectedWebService.config["port"] = current_port + 1
+                ProtectedWebService.port = current_port + 1
             except RaceConditionError:
                 races_caught += 1
 
