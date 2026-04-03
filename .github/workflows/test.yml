@@ -1,0 +1,45 @@
+name: Cross-Platform Test Suite
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }} (Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio anyio
+        pip install -e .
+
+    - name: Run Baseline Tests
+      run: python -m pytest tests/test_raceguard.py -v
+
+    - name: Run Extreme Torture
+      run: python -m pytest tests/extreme_torture.py -v
+
+    - name: Run Apocalypse Test (Stress)
+      # Some apocalypse tests are CPU intensive, giving them ample time
+      run: python -m pytest tests/apocalypse_test.py -v -s -k "not test_sigio_async_io_race"
+
+    - name: Run Windows Armageddon (Windows Only)
+      if: matrix.os == 'windows-latest'
+      run: python -m pytest tests/windows_armageddon_test.py -v -s
