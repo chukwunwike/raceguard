@@ -1,0 +1,15 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install dependencies if any (none needed for raceguard basic operation beyond stdlib, but pytest is needed for tests)
+RUN pip install pytest pytest-asyncio anyio
+
+# Copy the source code and tests
+COPY . .
+
+# Set PYTHONPATH so the src directory is findable
+ENV PYTHONPATH=/app/src
+
+# Run the apocalypse test by default
+CMD ["python", "-m", "pytest", "tests/apocalypse_test.py", "-v", "-s"]
