@@ -540,3 +540,41 @@ class TestLockProperty:
         b = protect({}, lock=shared_lock)
         assert a.lock is b.lock
         assert a.lock is shared_lock
+
+
+# ---------------------------------------------------------------------------
+# 9. Context Manager of protected object
+# ---------------------------------------------------------------------------
+
+class TestContextManager:
+    def test_context_manager_acquires_lock(self):
+        class MyCtx:
+            def __init__(self):
+                self.val = 0
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+
+        shared = protect(MyCtx())
+        errors = []
+        barrier = threading.Barrier(2)
+
+        def worker():
+            try:
+                barrier.wait()
+                with shared:
+                    shared.val += 1
+            except RaceConditionError as e:
+                errors.append(e)
+
+        t1 = threading.Thread(target=worker)
+        t2 = threading.Thread(target=worker)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        # Because `with shared:` acquires the proxy's lock, it should prevent race conditions
+        assert len(errors) == 0
+        assert shared.val == 2

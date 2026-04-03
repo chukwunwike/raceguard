@@ -247,23 +247,35 @@ _INTERNAL: frozenset[str] = frozenset({
 })
 
 
-def _get_caller_info() -> tuple[str, int, str]:
-    """Walk the stack using sys._getframe (50x faster than inspect.stack).
+_THIS_FILE = os.path.normcase(os.path.abspath(__file__))
+_FILENAME_CACHE: dict[str, str] = {}
 
-    Returns the (filename, lineno, function_name) of the first caller
-    outside of raceguard's own module file.
-    """
-    this_file = os.path.normcase(os.path.abspath(__file__))
+
+def _resolve_filename(filename: str) -> str:
+    if filename not in _FILENAME_CACHE:
+        _FILENAME_CACHE[filename] = os.path.normcase(os.path.abspath(filename))
+    return _FILENAME_CACHE[filename]
+
+
+def _get_caller_frame() -> Any:
+    """Walk the stack using sys._getframe, returning the raw frame object."""
     try:
-        frame = sys._getframe(1)
+        # Start at frame 2 (0: _get_caller_frame, 1: _rg_check, 2: caller)
+        frame = sys._getframe(2)
         while frame is not None:
-            fname = os.path.normcase(os.path.abspath(frame.f_code.co_filename))
-            if fname != this_file:
-                return (frame.f_code.co_filename, frame.f_lineno, frame.f_code.co_name)
+            if _resolve_filename(frame.f_code.co_filename) != _THIS_FILE:
+                return frame
             frame = frame.f_back
     except (AttributeError, ValueError):
         pass
-    return ("<unknown>", 0, "<unknown>")
+    return None
+
+
+def _resolve_location(frame: Any) -> tuple[str, int, str]:
+    """Extract human-readable info from a frame object ONLY when needed."""
+    if frame is None:
+        return ("<unknown>", 0, "<unknown>")
+    return (frame.f_code.co_filename, frame.f_lineno, frame.f_code.co_name)
 
 
 def _format_race_message(
@@ -306,7 +318,8 @@ class _SyncMemory:
         self.last_time: float = 0.0
         self.last_was_locked: bool = False
         self.last_mode: str = "read"
-        self.last_location: tuple = (None, None, 0)
+        self.last_frame: Any = None  # Lazy capture
+        self.last_location: tuple | None = None  # Cached if resolved
         self.state_lock: threading.Lock = threading.Lock()
 
 
@@ -382,21 +395,22 @@ class _ProtectedProxy:
                 else:
                     currently_locked = True
 
-            def _update(location: tuple) -> None:
+            def _update(frame: Any) -> None:
                 mem.last_actor = current_actor
                 mem.last_time = now
                 mem.last_was_locked = currently_locked
                 mem.last_mode = mode
-                mem.last_location = location
+                mem.last_frame = frame
+                mem.last_location = None
 
             # Rule 1: First access or same actor — always safe
             if mem.last_actor is None or mem.last_actor == current_actor:
-                _update(_get_caller_info())
+                _update(_get_caller_frame())
                 return
 
             # Rule 2: Previous access was under a lock — safe
             if mem.last_was_locked:
-                _update(_get_caller_info())
+                _update(_get_caller_frame())
                 return
 
             # Rule 3: Both lockless, within time window (or strict mode)
@@ -404,11 +418,13 @@ class _ProtectedProxy:
             if (delta < _CONFIG["race_window"] or _CONFIG["strict"]) and not currently_locked:
                 # Concurrent reads are always safe
                 if mode == "read" and mem.last_mode == "read":
-                    _update(_get_caller_info())
+                    _update(_get_caller_frame())
                     return
 
                 # --- RACE DETECTED ---
-                current_location = _get_caller_info()               
+                current_frame = _get_caller_frame()
+                current_location = _resolve_location(current_frame)
+                previous_location = _resolve_location(mem.last_frame)
                 
                 def _actor_name(actor):
                     th, task = actor
@@ -422,7 +438,7 @@ class _ProtectedProxy:
                 msg = _format_race_message(
                     obj, mode, mem.last_mode,
                     _actor_name(current_actor), _actor_name(mem.last_actor),
-                    current_location, mem.last_location,
+                    current_location, previous_location,
                     delta_ms, window_ms,
                 )
 
@@ -438,7 +454,7 @@ class _ProtectedProxy:
                         current_thread=_actor_name(current_actor),
                         previous_thread=_actor_name(mem.last_actor),
                         current_location=current_location,
-                        previous_location=mem.last_location,
+                        previous_location=previous_location,
                         time_gap_ms=delta_ms,
                         race_window_ms=window_ms,
                     )
@@ -449,11 +465,11 @@ class _ProtectedProxy:
                 elif cfg_mode == "log":
                     logger.warning(msg)
 
-                _update(current_location)
+                _update(current_frame)
                 return
 
             # Rule 4: Sequential access — safe
-            _update(_get_caller_info())
+            _update(_get_caller_frame())
 
     @property
     def lock(self) -> threading.Lock:
@@ -474,7 +490,11 @@ class _ProtectedProxy:
             return attr
 
         object.__getattribute__(self, "_rg_check")("read")
-        return _safe_protect(attr, lock=object.__getattribute__(self, "_rg_lock"))
+        return _safe_protect(
+            attr, 
+            lock=object.__getattribute__(self, "_rg_lock"),
+            memory=object.__getattribute__(self, "_rg_memory")
+        )
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name in _INTERNAL:
@@ -536,15 +556,25 @@ class _ProtectedProxy:
 
     # --- Context manager ---
 
+    # --- Context manager ---
+
     def __enter__(self):
         object.__getattribute__(self, "_rg_check")("read")
+        object.__getattribute__(self, "_rg_lock").acquire()
         obj = object.__getattribute__(self, "_rg_obj")
-        return obj.__enter__()
+        try:
+            return obj.__enter__()
+        except Exception:
+            object.__getattribute__(self, "_rg_lock").release()
+            raise
 
     def __exit__(self, *args: Any) -> Any:
         object.__getattribute__(self, "_rg_check")("read")
         obj = object.__getattribute__(self, "_rg_obj")
-        return obj.__exit__(*args)
+        try:
+            return obj.__exit__(*args)
+        finally:
+            object.__getattribute__(self, "_rg_lock").release()
 
     # --- In-place operators (mutating) ---
 
@@ -611,6 +641,27 @@ class _ProtectedProxy:
         object.__setattr__(self, "_rg_obj", obj)
         return self
 
+    def __ilshift__(self, other: Any) -> "_ProtectedProxy":
+        object.__getattribute__(self, "_rg_check")("write")
+        obj = object.__getattribute__(self, "_rg_obj")
+        obj <<= other
+        object.__setattr__(self, "_rg_obj", obj)
+        return self
+
+    def __irshift__(self, other: Any) -> "_ProtectedProxy":
+        object.__getattribute__(self, "_rg_check")("write")
+        obj = object.__getattribute__(self, "_rg_obj")
+        obj >>= other
+        object.__setattr__(self, "_rg_obj", obj)
+        return self
+
+    def __ipow__(self, other: Any) -> "_ProtectedProxy":
+        object.__getattribute__(self, "_rg_check")("write")
+        obj = object.__getattribute__(self, "_rg_obj")
+        obj **= other
+        object.__setattr__(self, "_rg_obj", obj)
+        return self
+
     # --- Binary operators (read) ---
 
     def __add__(self, other: Any) -> Any:
@@ -631,6 +682,10 @@ class _ProtectedProxy:
             other = object.__getattribute__(other, "_rg_obj")
         return obj - other
 
+    def __rsub__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        return other - object.__getattribute__(self, "_rg_obj")
+
     def __mul__(self, other: Any) -> Any:
         object.__getattribute__(self, "_rg_check")("read")
         obj = object.__getattribute__(self, "_rg_obj")
@@ -649,6 +704,10 @@ class _ProtectedProxy:
             other = object.__getattribute__(other, "_rg_obj")
         return obj // other
 
+    def __rfloordiv__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        return other // object.__getattribute__(self, "_rg_obj")
+
     def __truediv__(self, other: Any) -> Any:
         object.__getattribute__(self, "_rg_check")("read")
         obj = object.__getattribute__(self, "_rg_obj")
@@ -656,12 +715,90 @@ class _ProtectedProxy:
             other = object.__getattribute__(other, "_rg_obj")
         return obj / other
 
+    def __rtruediv__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        return other / object.__getattribute__(self, "_rg_obj")
+
     def __mod__(self, other: Any) -> Any:
         object.__getattribute__(self, "_rg_check")("read")
         obj = object.__getattribute__(self, "_rg_obj")
         if isinstance(other, _ProtectedProxy):
             other = object.__getattribute__(other, "_rg_obj")
         return obj % other
+
+    def __rmod__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        return other % object.__getattribute__(self, "_rg_obj")
+
+    def __pow__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        obj = object.__getattribute__(self, "_rg_obj")
+        if isinstance(other, _ProtectedProxy):
+            other = object.__getattribute__(other, "_rg_obj")
+        return obj ** other
+
+    def __rpow__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        return other ** object.__getattribute__(self, "_rg_obj")
+
+    def __lshift__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        obj = object.__getattribute__(self, "_rg_obj")
+        if isinstance(other, _ProtectedProxy):
+            other = object.__getattribute__(other, "_rg_obj")
+        return obj << other
+
+    def __rlshift__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        return other << object.__getattribute__(self, "_rg_obj")
+
+    def __rshift__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        obj = object.__getattribute__(self, "_rg_obj")
+        if isinstance(other, _ProtectedProxy):
+            other = object.__getattribute__(other, "_rg_obj")
+        return obj >> other
+
+    def __rrshift__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        return other >> object.__getattribute__(self, "_rg_obj")
+
+    def __and__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        obj = object.__getattribute__(self, "_rg_obj")
+        if isinstance(other, _ProtectedProxy):
+            other = object.__getattribute__(other, "_rg_obj")
+        return obj & other
+
+    def __rand__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        return other & object.__getattribute__(self, "_rg_obj")
+
+    def __or__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        obj = object.__getattribute__(self, "_rg_obj")
+        if isinstance(other, _ProtectedProxy):
+            other = object.__getattribute__(other, "_rg_obj")
+        return obj | other
+
+    def __ror__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        return other | object.__getattribute__(self, "_rg_obj")
+
+    def __xor__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        obj = object.__getattribute__(self, "_rg_obj")
+        if isinstance(other, _ProtectedProxy):
+            other = object.__getattribute__(other, "_rg_obj")
+        return obj ^ other
+
+    def __rxor__(self, other: Any) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        return other ^ object.__getattribute__(self, "_rg_obj")
+
+    def __invert__(self) -> Any:
+        object.__getattribute__(self, "_rg_check")("read")
+        return ~object.__getattribute__(self, "_rg_obj")
 
     # --- Callable ---
 

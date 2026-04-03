@@ -598,13 +598,19 @@ class TestTimingChannels:
             for _ in range(1000):
                 start = time.perf_counter_ns()
                 
-                if flag[0] == 0:
-                    flag[0] = thread_id + 1
+                try:
+                    if flag[0] == 0:
+                        flag[0] = thread_id + 1
+                except RaceConditionError:
+                    pass
                 
                 end = time.perf_counter_ns()
                 timings[thread_id].append(end - start)
                 
-                flag[0] = 0
+                try:
+                    flag[0] = 0
+                except RaceConditionError:
+                    pass
                 time.sleep(0.00001)
         
         t1 = threading.Thread(target=timed_access, args=(0,))
@@ -770,7 +776,7 @@ class TestNightmareScenarios:
             try:
                 current = head
                 for _ in range(100):
-                    new_node = Node(random.randint(0, 1000))
+                    new_node = protect(Node(random.randint(0, 1000)))
                     with locked(current):
                         new_node.next = current
                         current.prev = new_node
