@@ -17,6 +17,7 @@ This test creates a perfect storm of:
 WARNING: This test may cause your CPU to achieve sentience and question its existence.
 """
 
+import pytest
 import threading
 import asyncio
 import time
@@ -871,6 +872,7 @@ class TestCrossProcessChaos:
     Races across process boundaries using shared memory.
     """
     
+    @pytest.mark.skipif(sys.platform == "win32", reason="Multiprocessing spawn doesn't support local functions")
     def test_shared_memory_race(self):
         """
         multiprocessing.shared_memory with concurrent access.
@@ -1347,6 +1349,7 @@ class TestFinalApocalypse:
     with additional cross-cutting concerns.
     """
     
+    @pytest.mark.skipif(sys.platform == "win32", reason="Unix signals are not supported on Windows")
     def test_everything_everywhere_all_at_once(self):
         """
         Raft consensus + hardware memory model + GIL exploitation +

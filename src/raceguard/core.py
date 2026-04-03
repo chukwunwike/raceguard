@@ -320,7 +320,7 @@ class _SyncMemory:
         self.last_mode: str = "read"
         self.last_frame: Any = None  # Lazy capture
         self.last_location: tuple | None = None  # Cached if resolved
-        self.state_lock: threading.Lock = threading.Lock()
+        self.state_lock: threading.RLock = threading.RLock()
 
 
 def _safe_protect(obj: Any, lock: threading.Lock | None = None, memory: _SyncMemory | None = None) -> Any:
