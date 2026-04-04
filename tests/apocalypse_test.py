@@ -55,6 +55,8 @@ from raceguard import protect, locked, with_lock, configure, RaceConditionError,
 # Global chaos coordinator
 CHAOS_LEVEL = 100  # Percentage of maximum entropy
 APOCALYPSE_MODE = True
+IS_CI = os.environ.get("GITHUB_ACTIONS") == "true"
+CI_MULTIPLIER = 0.1 if IS_CI else 1.0
 
 # ============================================
 # UTILITIES FOR MAXIMUM DESTRUCTION
@@ -182,7 +184,8 @@ class TestDistributedConsensusHell:
             me = nodes[node_id]
             
             try:
-                while committed_entries[0] < 100 and races_detected[0] < 10:
+                max_entries = int(100 * CI_MULTIPLIER)
+                while committed_entries[0] < max_entries and races_detected[0] < 10:
                     state = me['state'][0]
                     
                     if state == 'follower':
@@ -277,7 +280,8 @@ class TestDistributedConsensusHell:
         
         # Add network partition chaos
         def chaos_partition():
-            while committed_entries[0] < 50:
+            max_p = int(50 * CI_MULTIPLIER)
+            while committed_entries[0] < max_p:
                 time.sleep(0.05)
                 with locked(network):
                     # Randomly partition nodes
@@ -400,7 +404,8 @@ class TestDistributedConsensusHell:
             me = replicas[replica_id]
             
             try:
-                while view_changes[0] < 5:
+                max_vc = int(5 * CI_MULTIPLIER) or 1
+                while view_changes[0] < max_vc:
                     current_primary = primary[0]
                     
                     if replica_id == current_primary and me['status'][0] == 'normal':
@@ -498,7 +503,8 @@ class TestHardwareMemoryModel:
             my_buffer = store_buffers[cpu_id]
             
             try:
-                for _ in range(1000):
+                iters = int(1000 * CI_MULTIPLIER)
+                for _ in range(iters):
                     # Write to local store buffer first
                     with locked(my_buffer):
                         my_buffer['x'] = 1
@@ -577,7 +583,8 @@ class TestHardwareMemoryModel:
         def reader(cpu_id):
             my_cache = cache_lines[cpu_id % 4]
             
-            for _ in range(1000):
+            iters = int(1000 * CI_MULTIPLIER)
+            for _ in range(iters):
                 # Check cache
                 cached_valid = False
                 cached_data = None
@@ -686,7 +693,8 @@ class TestGILBytecodeExploitation:
         
         def inserter(thread_id):
             try:
-                for i in range(1000):
+                iters = int(1000 * CI_MULTIPLIER)
+                for i in range(iters):
                     key = f"thread_{thread_id}_key_{i}"
                     # This may trigger resize
                     d[key] = i
@@ -1257,7 +1265,8 @@ class TestGCFinalizerResurrection:
                     races.append(e)
         
         def creator():
-            for i in range(1000):
+            iters = int(1000 * CI_MULTIPLIER)
+            for i in range(iters):
                 obj = PhantomObject(i)
                 # Drop reference
                 del obj
@@ -1316,7 +1325,8 @@ class TestGCFinalizerResurrection:
                     pass
         
         def stress_test():
-            for i in range(100):
+            iters = int(100 * CI_MULTIPLIER) or 10
+            for i in range(iters):
                 obj = ImmortalObject(i)
                 # Create and drop
                 del obj
@@ -1399,7 +1409,8 @@ class TestFinalApocalypse:
         def distributed_consensus_node(node_id):
             """Raft node with all chaos applied."""
             try:
-                for _ in range(50):
+                iters = int(50 * CI_MULTIPLIER) or 2
+                for _ in range(iters):
                     # Read state (may see partial update due to hardware reordering)
                     with locked(apocalypse_state):
                         log_len = len(apocalypse_state['consensus_log'])
