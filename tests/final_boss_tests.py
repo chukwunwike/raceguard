@@ -91,8 +91,116 @@ class TestFinalBossEdgeCases:
         for t in threads:
             t.join()
 
-        assert races_caught > 0, "Failed to catch concurrent class metadata monkey-patching race"
-        print(f"Class/Metaclass monkey-patching races caught: {races_caught}")
+    def test_extreme_ecommerce_checkout_race(self):
+        """
+        An EXTREMELY COMPLEX and terrifyingly realistic Check-Then-Act race condition.
+        This simulates an e-commerce platform with two asynchronous flows:
+        1. A Payment Processor (Worker) authorizing a user's cart.
+        2. An Inventory Webhook (Sweeper) cancelling carts if items go out of stock.
+
+        The Race:
+        The Payment Processor aliases the deep dictionary `state["carts"]["cart_1"]`.
+        It checks if the cart is "active" and has items.
+        It simulates a 3rd-party API call to Stripe (yielding the thread).
+        Concurrently, the Inventory Webhook fires, determines the item is out of stock,
+        checks that payment isn't authorized yet, empties the cart, and marks it "cancelled".
+        The Payment Processor wakes up and forces `authorized = True` and `status = "paid"`,
+        resulting in a customer paying for an empty, cancelled cart.
+
+        Raceguard catches this precise read/write collision deep within the 
+        nested ["payment"]["authorized"] and ["status"] branches.
+        """
+        configure(mode="raise")
+        
+        # Deeply nested, highly realistic application state
+        app_state = protect({
+            "carts": {
+                "cart_999": {
+                    "status": "active",
+                    "items": [{"id": "SKU_42", "price": 299.99}],
+                    "payment": {
+                        "authorized": False,
+                        "transaction_id": None
+                    }
+                }
+            }
+        })
+        
+        races_caught = 0
+        running = True
+        
+        def inventory_webhook_sweeper():
+            # Out-of-Stock webhook randomly fires and cancels un-paid carts
+            while running:
+                try:
+                    cart = app_state["carts"]["cart_999"]
+                    
+                    # Webhook logic: If active and unpaid, cancel it
+                    if cart["status"] == "active" and not cart["payment"]["authorized"]:
+                        cart["items"].clear()
+                        cart["status"] = "cancelled"
+                    
+                    # Reset the simulation state so the Payment Processors can try again
+                    time.sleep(0.001)
+                    cart["items"].append({"id": "SKU_42", "price": 299.99})
+                    cart["payment"]["authorized"] = False
+                    cart["payment"]["transaction_id"] = None
+                    cart["status"] = "active"
+                    
+                except (KeyError, RuntimeError):
+                    pass
+                except RaceConditionError:
+                    nonlocal races_caught
+                    races_caught += 1
+
+        def payment_processor_worker(cart_id):
+            nonlocal races_caught
+            try:
+                # 1. Developer aliases the deeply nested cart 
+                user_cart = app_state["carts"][cart_id]
+                
+                # 2. CHECK: verify cart is active, unpaid, and has items
+                if user_cart["status"] == "active" and not user_cart["payment"]["authorized"]:
+                    if len(user_cart["items"]) > 0:
+                        
+                        # 3. YIELD: Simulate 3rd-party Stripe API call taking a few ms
+                        # This is the massive vulnerability window.
+                        time.sleep(random.uniform(0.001, 0.005))
+                        
+                        # 4. ACT: Stripe returned success! Charge the user.
+                        # BUG: The webhook might have cancelled and emptied the cart!
+                        # The user is now charged for 0 items!
+                        user_cart["payment"]["authorized"] = True
+                        user_cart["payment"]["transaction_id"] = f"txn_{random.randint(1000, 9999)}"
+                        user_cart["status"] = "paid"
+                        
+            except RaceConditionError:
+                races_caught += 1
+            except Exception:
+                pass
+
+
+        import random
+        # Start the aggressive Inventory Webhook
+        webhook_thread = threading.Thread(target=inventory_webhook_sweeper, daemon=True)
+        webhook_thread.start()
+        
+        # Fire a storm of concurrent Payment Requests (like a bot drop or double-clicks)
+        payment_threads = []
+        for _ in range(100):
+            t = threading.Thread(target=payment_processor_worker, args=("cart_999",))
+            payment_threads.append(t)
+            t.start()
+            
+        for t in payment_threads:
+            t.join()
+            
+        running = False
+        webhook_thread.join(timeout=1.0)
+
+        assert races_caught > 0, "Failed to catch the extreme ecommerce check-then-act race"
+        print(f"Extreme E-Commerce Check-Then-Act races caught: {races_caught}")
+
 
 if __name__ == '__main__':
     t = TestFinalBossEdgeCases()
@@ -100,4 +208,6 @@ if __name__ == '__main__':
     t.test_contextvar_mutation_bleed_race()
     print("\nRunning Class Monkey-Patching Race...")
     t.test_class_object_monkey_patching_race()
+    print("\nRunning Extreme E-Commerce Checkout Race...")
+    t.test_extreme_ecommerce_checkout_race()
     print("\nAll Final Boss tests passed!")

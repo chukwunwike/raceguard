@@ -76,9 +76,11 @@ If you forget the `with locked(counter):` block, Raceguard will instantly throw 
 
 Raceguard is designed for **real developer workflows**, not just theory.
 
+*   **High Performance**: Uses lazy frame capture, avoiding expensive stack inspection overhead until absolutely necessary.
+*   **Flexible Detection**: Native support for `raise`, `warn`, and `log` modes to fit your testing strategy.
 *   **Zero Production Overhead**: Set `RACEGUARD_ENABLED=0` to completely bypass the proxy in live environments.
 *   **Async-Aware**: Seamlessly tracks races between mixed `asyncio` tasks and standard threads.
-*   **Deep Protection**: Automatically proxies nested mutable structures (e.g., a dictionary containing lists).
+*   **Deep Protection**: Automatically proxies nested mutable structures, including full interception of Python's dunder methods and context managers.
 *   **Rich Reports**: Tells you exactly which threads accessed the object, at what time, and where to fix it.
 
 ---
@@ -106,7 +108,7 @@ pip install raceguard
 
 Typical usage patterns:
 
-*   **Development**: Run with `configure(mode="raise")` to catch bugs during local testing.
+*   **Development**: Run with `configure(mode="raise")` (or `"warn"`, `"log"`) to catch bugs during local testing.
 *   **Continuous Integration**: Use `configure(strict=True)` in CI to ensure zero concurrency regressions.
 *   **Production**: Set `RACEGUARD_ENABLED=0` for a true zero-cost passthrough of your original objects.
 
