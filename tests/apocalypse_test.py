@@ -1353,7 +1353,7 @@ class TestGCFinalizerResurrection:
 # THE FINAL APOCALYPSE - EVERYTHING AT ONCE
 # ============================================
 
-@pytest.mark.skipif(GITHUB_ACTIONS, reason="Final Apocalypse is too intensive for stable GHA execution")
+@pytest.mark.skipif(IS_CI, reason="Final Apocalypse is too intensive for stable GHA execution")
 class TestFinalApocalypse:
     """
     The perfect storm: All previous tests running simultaneously
