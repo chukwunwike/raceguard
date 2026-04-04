@@ -20,13 +20,13 @@ from raceguard import protect, locked, with_lock, configure, RaceConditionError,
 # DISTRIBUTED STATE MACHINE RACES
 # ============================================
 
-class TestDistributedStateMachines:
+class TestDistributedStateRaces:
     """
     State machines where the race is distributed across multiple objects
     and only manifests in specific state transitions.
     """
     
-    def test_byzantine_generals_consensus_race(self):
+    def test_faulty_threads_corrupt_distributed_consensus(self):
         """
         Distributed consensus with traitorous threads.
         Race only appears when >f+1 threads disagree on state.
@@ -107,7 +107,7 @@ class TestDistributedStateMachines:
         # Race in message_bus should be detected
         print(f"Consensus reached: {consensus_reached[0]}, Race detected: {race_detected[0]}")
     
-    def test_lamport_clock_drift_race(self):
+    def test_logical_clock_drift_breaks_causality(self):
         """
         Logical clocks that appear consistent but have causality violations.
         Race in the happens-before relationship.
@@ -177,7 +177,7 @@ class TestDistributedStateMachines:
         
         print(f"Causality violations: {len(causality_violations)}")
     
-    def test_two_phase_commit_orphan_race(self):
+    def test_coordinator_crash_orphans_two_phase_commit(self):
         """
         2PC coordinator crashes, leaving participants in uncertain state.
         Race between recovery and new transaction.
@@ -262,12 +262,12 @@ class TestDistributedStateMachines:
 # SPECULATIVE EXECUTION & MEMORY BARRIERS
 # ============================================
 
-class TestSpeculativeExecution:
+class TestMemoryOrderingRaces:
     """
     Races that exploit CPU speculative execution and memory ordering.
     """
     
-    def test_load_store_reordering_detection(self):
+    def test_dekker_algorithm_fails_under_store_reordering(self):
         """
         Test if loads and stores can be reordered (simulated).
         Classic Dekker's algorithm failure case.
@@ -325,7 +325,7 @@ class TestSpeculativeExecution:
         
         print(f"Races detected: {race_count[0]}")
     
-    def test_double_checked_locking_failure(self):
+    def test_broken_double_checked_locking_init_race(self):
         """
         Classic broken double-checked locking pattern.
         Race between initialization check and use.
@@ -366,7 +366,7 @@ class TestSpeculativeExecution:
         
         print(f"Init count: {init_count[0]}, Race detected: {race_detected[0]}")
     
-    def test_tear_read_64bit_simulation(self):
+    def test_torn_read_of_64bit_value_split_across_halves(self):
         """
         Simulate reading 64-bit value as two 32-bit halves (tear).
         """
@@ -403,7 +403,7 @@ class TestSpeculativeExecution:
         
         print(f"Tears observed: {len(tears_observed)}")
 
-    def test_cache_line_false_sharing(self):
+    def test_adjacent_memory_slots_cause_false_sharing(self):
         """
         Threads modify adjacent memory that shares cache line.
         """
@@ -431,12 +431,12 @@ class TestSpeculativeExecution:
 # GIL EXPLOITATION RACES
 # ============================================
 
-class TestGILExploitation:
+class TestPythonGILBoundaryRaces:
     """
     Races that specifically exploit Python's GIL behavior.
     """
     
-    def test_eval_breaker_race(self):
+    def test_periodic_gil_release_exploited_in_tight_loop(self):
         """
         Exploit eval breaker (periodic GIL release) for races.
         """
@@ -460,7 +460,7 @@ class TestGILExploitation:
         
         print(f"Races in tight loop: {len(races)}")
     
-    def test_c_extension_boundary_race(self):
+    def test_race_across_python_c_extension_boundary(self):
         """
         Race across Python/C boundary where GIL is released.
         """
@@ -486,7 +486,7 @@ class TestGILExploitation:
         
         print(f"C-boundary races: {len(errors)}")
     
-    def test_generator_yield_race(self):
+    def test_generator_suspension_allows_concurrent_mutation(self):
         """
         Race between generator suspension and other threads.
         """
@@ -526,7 +526,7 @@ class TestGILExploitation:
         
         print(f"Generator inconsistencies: {len(inconsistencies)}")
 
-    def test_mmap_shared_memory_race(self):
+    def test_memory_mapped_file_bypasses_python_object_model(self):
         """
         Race through memory-mapped file (bypasses Python object model).
         """
@@ -580,12 +580,12 @@ class TestGILExploitation:
 # TIMING ATTACK CHANNELS
 # ============================================
 
-class TestTimingChannels:
+class TestTimingSideChannelRaces:
     """
     Races that manifest as timing side channels.
     """
     
-    def test_cache_timing_covert_channel(self):
+    def test_cache_timing_reveals_race_winner(self):
         """
         Use cache timing to detect race winner (covert channel).
         """
@@ -625,7 +625,7 @@ class TestTimingChannels:
         
         print(f"Thread 0 avg time: {avg_0}ns, Thread 1 avg time: {avg_1}ns")
     
-    def test_branch_prediction_race(self):
+    def test_branch_predictor_state_exploited_across_threads(self):
         """
         Race that exploits branch predictor state.
         """
@@ -658,7 +658,7 @@ class TestTimingChannels:
         
         print(f"Mispredictions: {mispredictions}")
 
-    def test_instruction_reorder_speculation(self):
+    def test_speculative_instruction_reordering_breaks_consistency(self):
         """
         Test if instructions can be speculatively reordered.
         """
@@ -699,12 +699,12 @@ class TestTimingChannels:
 # COMPOUND NIGHTMARE SCENARIOS
 # ============================================
 
-class TestNightmareScenarios:
+class TestCompoundNightmareRaces:
     """
     The worst possible combinations of everything above.
     """
     
-    def test_recursive_deadlock_with_timeout_race(self):
+    def test_nested_lock_recursion_with_timeout_causes_deadlock(self):
         """
         Recursion + timeout + multiple locks = nightmare.
         """
@@ -756,7 +756,7 @@ class TestNightmareScenarios:
         
         print(f"Deadlocks: {len(deadlocks)}, Timeouts: {len(timeouts)}")
     
-    def test_reference_cycle_gc_race(self):
+    def test_garbage_collector_runs_during_critical_section(self):
         """
         Reference cycles causing GC during critical section.
         """
@@ -810,7 +810,7 @@ class TestNightmareScenarios:
         
         print(f"GC races detected: {len(gc_races)}")
     
-    def test_metaclass_registry_race(self):
+    def test_concurrent_class_creation_races_in_metaclass(self):
         """
         Race in metaclass __new__ during class creation.
         """

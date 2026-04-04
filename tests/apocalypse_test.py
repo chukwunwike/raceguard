@@ -14,7 +14,7 @@ This test creates a perfect storm of:
 - CPU cache coherence protocols
 - Quantum superposition of states (simulated)
 
-WARNING: This test may cause your CPU to achieve sentience and question its existence.
+
 """
 
 import pytest
@@ -64,8 +64,7 @@ CI_MULTIPLIER = 0.1 if IS_CI else 1.0
 
 class QuantumBit:
     """
-    Simulates quantum superposition - object exists in multiple states
-    until observed (locked), then collapses to one state.
+    
     """
     def __init__(self):
         self._states = []
@@ -132,13 +131,13 @@ class ByzantineFaultInjector:
 # THE APOCALYPSE - DISTRIBUTED CONSENSUS HELL
 # ============================================
 
-class TestDistributedConsensusHell:
+class TestDistributedConsensusRaces:
     """
     Multi-layer Byzantine consensus with nested state machines,
     speculative execution, and hardware-level races.
     """
     
-    def test_raft_consensus_with_speculative_log_entries(self):
+    def test_raft_followers_speculatively_apply_uncommitted_entries(self):
         """
         Raft consensus where followers speculatively apply log entries
         before commit, creating rollback races.
@@ -304,7 +303,7 @@ class TestDistributedConsensusHell:
         if speculative_violations:
             print("SAFETY VIOLATION: Speculative execution leaked uncommitted state!")
     
-    def test_paxos_acceptor_preempt_race(self):
+    def test_paxos_acceptor_preempted_creates_dangling_promise(self):
         """
         Paxos acceptor handling prepare and accept messages concurrently
         with preemption, creating dangling promises.
@@ -379,7 +378,7 @@ class TestDistributedConsensusHell:
         print(f"Paxos: {len(chosen_values)} values chosen, {len(races)} races")
 
 # ============================================
-    def test_viewstamped_replication_primary_view_change_race(self):
+    def test_primary_fails_mid_view_change_causing_split_brain(self):
         """
         VR protocol where primary fails during view change,
         causing split-brain with divergent operation logs.
@@ -479,13 +478,13 @@ class TestDistributedConsensusHell:
 # HARDWARE-LEVEL MEMORY MODEL TORTURE
 # ============================================
 
-class TestHardwareMemoryModel:
+class TestHardwareMemoryModelRaces:
     """
     Tests that simulate hardware memory model violations that
     are invisible to standard race detectors.
     """
     
-    def test_store_buffer_forwarding_race(self):
+    def test_store_buffer_makes_writes_visible_to_own_cpu_first(self):
         """
         CPU store buffer forwarding - stores visible to own CPU
         before globally visible.
@@ -551,7 +550,7 @@ class TestHardwareMemoryModel:
         anomalies = [o for o in observations if o[1] == 1 and o[2] == 0]
         print(f"Store buffer anomalies: {len(anomalies)}")
     
-    def test_invalidation_queue_delay_race(self):
+    def test_batched_cache_invalidation_causes_stale_reads(self):
         """
         CPU invalidation queue delays - cache invalidations
         batched for performance, causing stale reads.
@@ -627,7 +626,7 @@ class TestHardwareMemoryModel:
         
         print(f"Stale cache reads: {len(stale_reads)}")
 
-    def test_load_speculation_misprediction_race(self):
+    def test_speculative_load_misprediction_leaks_side_effects(self):
         """
         CPU speculatively loads data, then rolls back on misprediction
         but side effects remain (Spectre-style).
@@ -673,12 +672,12 @@ class TestHardwareMemoryModel:
 # GIL EXPLOITATION AT BYTECODE LEVEL
 # ============================================
 
-class TestGILBytecodeExploitation:
+class TestGILBytecodeRaces:
     """
     Exploiting exact bytecode boundaries where GIL is released.
     """
     
-    def test_dict_resize_race(self):
+    def test_dict_resize_during_insertion_exposes_inconsistent_table(self):
         """
         Dictionary resize during insertion - GIL released,
         another thread sees inconsistent hash table.
@@ -730,7 +729,7 @@ class TestGILBytecodeExploitation:
         
         print(f"Dict resize races: {len(races)}, Lost keys: {len(lost_keys)}")
     
-    def test_list_sort_race(self):
+    def test_list_sort_releases_gil_allowing_concurrent_mutation(self):
         """
         List sort releases GIL during comparisons,
         another thread modifies list.
@@ -770,7 +769,7 @@ class TestGILBytecodeExploitation:
         
         print(f"List sort races: {len(races)}")
     
-    def test_import_race(self):
+    def test_concurrent_imports_race_on_importlib_locks(self):
         """
         Concurrent imports of same module - complex locking in importlib.
         """
@@ -820,7 +819,7 @@ def init():
         
         print(f"Import races: {race_count[0]}")
 
-    def test_frame_evaluation_race(self):
+    def test_frame_introspection_races_with_frame_evaluation(self):
         """
         Race between frame evaluation and introspection.
         """
@@ -875,13 +874,13 @@ def init():
 # CROSS-PROCESS SHARED MEMORY CHAOS
 # ============================================
 
-class TestCrossProcessChaos:
+class TestCrossProcessSharedMemoryRaces:
     """
     Races across process boundaries using shared memory.
     """
     
     @pytest.mark.skipif(sys.platform == "win32", reason="Multiprocessing spawn doesn't support local functions")
-    def test_shared_memory_race(self):
+    def test_shared_memory_segment_accessed_from_multiple_workers(self):
         """
         multiprocessing.shared_memory with concurrent access.
         """
@@ -936,7 +935,7 @@ class TestCrossProcessChaos:
             shm.close()
             shm.unlink()
     
-    def test_mmap_file_race(self):
+    def test_memory_mapped_file_page_level_write_races(self):
         """
         Memory-mapped file with page-level races.
         """
@@ -993,7 +992,7 @@ class TestCrossProcessChaos:
         finally:
             os.unlink(path)
 
-    def test_socket_sendmsg_race(self):
+    def test_socket_buffer_modified_during_scatter_gather_send(self):
         """
         Scatter/gather I/O with concurrent buffer modification.
         """
@@ -1051,12 +1050,12 @@ import pytest
 import sys
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Unix signals and fork are not supported on Windows")
-class TestSignalPreemptionHell:
+class TestSignalPreemptionRaces:
     """
     Unix signals causing preemption at worst possible moment.
     """
     
-    def test_sigalrm_critical_section_race(self):
+    def test_sigalrm_fires_during_locked_critical_section(self):
         """
         SIGALRM arrives during locked operation.
         """
@@ -1101,7 +1100,7 @@ class TestSignalPreemptionHell:
         critical_worker()
         print(f"Signal interruptions: {interrupted_count[0]}")
     
-    def test_sigchld_zombie_race(self):
+    def test_sigchld_arrives_while_reaping_zombie_process(self):
         """
         SIGCHLD arrives while processing child status.
         """
@@ -1167,7 +1166,7 @@ class TestSignalPreemptionHell:
         
         print(f"Zombies created: {zombie_count[0]}")
 
-    def test_sigio_async_io_race(self):
+    def test_sigio_driven_async_io_races_with_buffer_processor(self):
         """
         SIGIO-driven async I/O with buffer races.
         """
@@ -1235,12 +1234,12 @@ class TestSignalPreemptionHell:
 # GC FINALIZER RESURRECTION CYCLES
 # ============================================
 
-class TestGCFinalizerResurrection:
+class TestGarbageCollectorFinalizerRaces:
     """
     Object resurrection during finalization creating immortal cycles.
     """
     
-    def test_phantom_reference_race(self):
+    def test_weak_reference_to_object_being_garbage_collected(self):
         """
         Phantom references allowing access to being-collected objects.
         """
@@ -1292,7 +1291,7 @@ class TestGCFinalizerResurrection:
         
         print(f"Phantom resurrections: {resurrection_count[0]}, races: {len(races)}")
     
-    def test_finalizer_reentrancy_death(self):
+    def test_finalizer_resurrects_dying_object_causing_infinite_loop(self):
         """
         Finalizer that resurrects object, which gets finalized again.
         """

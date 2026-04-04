@@ -260,13 +260,13 @@ if WINDOWS_MODE:
 # WINDOWS I/O COMPLETION PORT (IOCP) RACES
 # ============================================
 
-class TestWindowsIOCPTorture:
+class TestWindowsCompletionPortRaces:
     """
     IOCP is Windows' most scalable I/O mechanism - and most prone to races.
     Tests completion port races, packet reordering, and thread pool starvation.
     """
     
-    def test_iocp_completion_key_race(self):
+    def test_multiple_threads_racing_on_same_completion_key(self):
         """
         Multiple threads waiting on same completion key.
         Race between GetQueuedCompletionStatus and packet delivery.
@@ -389,7 +389,7 @@ class TestWindowsIOCPTorture:
         finally:
             CloseHandle(iocp)
     
-    def test_iocp_overlapped_structure_race(self):
+    def test_reusing_overlapped_buffer_before_io_completes(self):
         """
         OVERLAPPED structure reuse before completion.
         Classic Windows race - reusing OVERLAPPED while I/O pending.
@@ -521,7 +521,7 @@ class TestWindowsIOCPTorture:
             except:
                 pass
 
-    def test_iocp_thread_pool_starvation_race(self):
+    def test_thread_pool_starved_by_rapid_callback_submission(self):
         """
         IOCP with concurrent callback submission causing thread pool starvation.
         """
@@ -601,13 +601,13 @@ class TestWindowsIOCPTorture:
 # WINDOWS ASYNCHRONOUS PROCEDURE CALLS (APC) HELL
 # ============================================
 
-class TestWindowsAPCHell:
+class TestWindowsAsyncProcedureCallRaces:
     """
     APCs are the most evil Windows mechanism - they preempt thread
     execution at arbitrary points. QueueUserAPC injection races.
     """
     
-    def test_apc_queue_race_multiple_injectors(self):
+    def test_multiple_threads_injecting_apcs_to_same_target(self):
         """
         Multiple threads queueing APCs to same target simultaneously.
         Order not guaranteed, leading to state corruption.
@@ -668,12 +668,12 @@ class TestWindowsAPCHell:
 # WINDOWS SLIM READER/WRITER LOCK RACES
 # ============================================
 
-class TestWindowsSRWRaces:
+class TestWindowsSlimReaderWriterLockRaces:
     """
     SRW locks - lightweight, but with complex upgrade/downgrade rules.
     """
     
-    def test_srw_upgrade_to_exclusive_race(self):
+    def test_upgrading_shared_lock_to_exclusive_causes_deadlock(self):
         """
         Attempt to upgrade shared lock to exclusive - not supported,
         causes deadlock or race depending on implementation.
@@ -766,13 +766,13 @@ class TestWindowsSRWRaces:
 # WINDOWS CONDITION VARIABLE WAKE RACES
 # ============================================
 
-class TestWindowsConditionVariableHell:
+class TestWindowsConditionVariableRaces:
     """
     Windows condition variables with Wake vs WakeAll races.
     Lost wakeups and thundering herds.
     """
     
-    def test_condition_variable_thundering_herd(self):
+    def test_wake_all_causes_thundering_herd_race(self):
         """
         WakeAll causes all waiters to wake and race for the lock.
         """
