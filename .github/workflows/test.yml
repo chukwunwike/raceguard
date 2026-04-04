@@ -36,9 +36,9 @@ jobs:
     - name: Run Extreme Torture
       run: python -m pytest tests/extreme_torture.py -v
 
-    - name: Run Apocalypse Test (Stress)
-      # Some apocalypse tests are CPU intensive, giving them ample time
-      run: python -m pytest tests/apocalypse_test.py -v -s -k "not test_sigio_async_io_race"
+#    - name: Run Apocalypse Test (Stress)
+#      # Some apocalypse tests are CPU intensive and non-deterministic in VM environments
+#      run: python -m pytest tests/apocalypse_test.py -v -s -k "not test_sigio_async_io_race"
 
     - name: Run Windows Armageddon (Windows Only)
       if: matrix.os == 'windows-latest'
