@@ -140,6 +140,80 @@ def safe_worker_dec():
 
 ---
 
+## Environment Variables
+
+Configure Raceguard without modifying code. Useful for CI/CD pipelines and deployment scripts.
+
+| Variable | Default | Description |
+|---|---|---|
+| `RACEGUARD_ENABLED` | `1` | Set to `0` to completely disable detection (zero overhead). |
+| `RACEGUARD_MODE` | `raise` | Detection mode: `raise`, `warn`, or `log`. |
+| `RACEGUARD_STRICT` | `0` | Set to `1` to flag any unsynchronized access regardless of timing. |
+| `RACEGUARD_WINDOW` | `0.01` | Time window (seconds) within which concurrent accesses are flagged. |
+
+---
+
+## Full `configure()` Reference
+
+```python
+from raceguard import configure
+
+configure(
+    enabled=True,        # Toggle detection on/off at runtime
+    mode="raise",        # "raise" | "warn" | "log"
+    strict=False,        # Bypass timing heuristic, flag all unsynchronized access
+    race_window=0.01,    # Seconds — the sensitivity window for detecting races
+    max_warnings=1000,   # Cap collected warnings in "warn" mode to prevent flooding
+)
+```
+
+---
+
+## Protecting Scalar Values
+
+Use `Value()` to protect simple types like `int`, `float`, or `str` that cannot be proxied directly:
+
+```python
+from raceguard import Value, locked
+
+counter = Value(0)
+
+def worker():
+    with locked(counter):
+        counter.set(counter.get() + 1)
+```
+
+---
+
+## Utility Functions
+
+```python
+from raceguard import (
+    get_config,       # Returns the current configuration dict
+    clear_warnings,   # Returns and clears all collected RaceConditionWarning objects
+    warnings,         # Direct access to the list of collected warnings
+    reset,            # Resets library state (useful between test runs)
+    unbind,           # Unwraps a proxy to retrieve the raw underlying object
+)
+
+# Example: Inspect warnings after a test run
+from raceguard import configure, clear_warnings
+
+configure(mode="warn")
+# ... run concurrent code ...
+collected = clear_warnings()
+for w in collected:
+    print(w)
+
+# Example: Get the raw object for identity checks or serialization
+from raceguard import protect, unbind
+
+data = protect({"key": "value"})
+raw = unbind(data)  # Returns the original dict
+```
+
+---
+
 ## Known Limitations & Blindspots
 
 While Raceguard is highly effective for hunting in-memory thread races, there are fundamental "True Blindspots" that can evade the tracking model:
