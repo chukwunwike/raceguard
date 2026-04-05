@@ -140,13 +140,16 @@ def safe_worker_dec():
 
 ---
 
-## Detection Boundaries
+## Known Limitations & Blindspots
 
-While Raceguard is powerful for hunting in-memory thread races, we prioritize clarity on its limits:
+While Raceguard is highly effective for hunting in-memory thread races, there are fundamental "True Blindspots" that can evade the tracking model:
 
-1.  **Python-Level Only**: Tracks access through the Python object model. It cannot see races happening inside compiled C-extensions (like OpenSSL).
-2.  **In-Process**: Detects races in the same memory space. Does not track `multiprocessing` memory boundaries.
-3.  **Object Identity**: Use `raceguard.unbind(obj)` if you need the raw underlying object for identity checks.
+1.  **Direct Member Access**: Bypass the proxy by reaching the underlying object via `obj._rg_obj`. This evades the Python object model's dunder method interception.
+2.  **OS Signal Preemption**: Logic executed within asynchronous signal handlers (e.g., `SIGALRM`) runs in the same thread context. This can cause "invisible" races that appear as legitimate single-threaded access.
+3.  **Cross-Process Memory Forks**: OS-level `fork()` clones memory. Raceguard tracks within the memory space of a single process and cannot natively bridge state across process boundaries.
+4.  **C-Extension Logic**: The library cannot observe concurrency that occurs purely within compiled C-extensions (like `numpy` internals or `OpenSSL`) if they bypass the CPython attribute accessors.
+
+We recommend using Raceguard as a **heuristic safety net** rather than an absolute formal verifier for these edge cases.
 
 ---
 
