@@ -1502,6 +1502,17 @@ class TestFinalApocalypse:
 if __name__ == "__main__":
     import pytest
     
+    print("=" * 80)
+    print("RACEGUARD APOCALYPSE TEST")
+    print("Maximum Entropy Mode Activated")
+    print("=" * 80)
+    print("!!! WARNING: EXTREME RESOURCE INTENSITY !!!")
+    print("This suite is designed to push your CPU and Kernel to their absolute limits.")
+    print("If you are on lower-end hardware, please terminate now (Ctrl+C).")
+    print("=" * 80)
+    print(f"Chaos Level: {CHAOS_LEVEL}%")
+    print(f"Apocalypse Mode: {APOCALYPSE_MODE}")
+    print("=" * 80)
 
     
     # Run with maximum verbosity and no capture
