@@ -174,13 +174,13 @@ configure(
 Use `Value()` to protect simple types like `int`, `float`, or `str` that cannot be proxied directly:
 
 ```python
-from raceguard import Value, locked
+from raceguard import protect, Value, locked
 
-counter = Value(0)
+counter = protect(Value(0))
 
 def worker():
     with locked(counter):
-        counter.set(counter.get() + 1)
+        counter.value += 1
 ```
 
 ---
@@ -218,7 +218,7 @@ raw = unbind(data)  # Returns the original dict
 
 While Raceguard is highly effective for hunting in-memory thread races, there are fundamental "True Blindspots" that can evade the tracking model:
 
-1.  **Direct Member Access**: Bypass the proxy by reaching the underlying object via `obj._rg_obj`. This evades the Python object model's dunder method interception.
+1.  **Direct Internal Access**: Code that bypasses the proxy layer and accesses the wrapped object's internal reference directly will evade detection.
 2.  **OS Signal Preemption**: Logic executed within asynchronous signal handlers (e.g., `SIGALRM`) runs in the same thread context. This can cause "invisible" races that appear as legitimate single-threaded access.
 3.  **Cross-Process Memory Forks**: OS-level `fork()` clones memory. Raceguard tracks within the memory space of a single process and cannot natively bridge state across process boundaries.
 4.  **C-Extension Logic**: The library cannot observe concurrency that occurs purely within compiled C-extensions (like `numpy` internals or `OpenSSL`) if they bypass the CPython attribute accessors.
