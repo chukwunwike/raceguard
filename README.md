@@ -361,7 +361,7 @@ We recommend using Raceguard as a **heuristic safety net** rather than an absolu
 
 ## Dev-Mode Overhead
 
-In **production** (`RACEGUARD_ENABLED=0`), `protect()` returns the raw object directly — **zero overhead**.
+In **production** (`RACEGUARD_ENABLED=0`), `protect()` acts as a completely transparent kill-switch. It bypasses proxy creation entirely and returns your raw object directly, ensuring absolutely **zero overhead** at runtime.
 
 In **development mode**, every attribute access on a protected object passes through the proxy layer, which performs a thread-identity check and a timestamp comparison. This is intentionally lightweight, but it is not free.
 
