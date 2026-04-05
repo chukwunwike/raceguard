@@ -140,6 +140,43 @@ def safe_worker_dec():
 
 ---
 
+## Advanced Features
+
+### Automatic Nested Protection
+Raceguard automatically protects child objects. You don't need to manually wrap every nested dictionary or list in your state tree.
+
+```python
+from raceguard import protect
+
+# Wrap the parent object once
+state = protect({"users": ["Alice", "Bob"]})
+
+# The child list is automatically protected when accessed!
+state["users"].append("Charlie")
+```
+
+### Actionable Error Reports
+When a race condition occurs, Raceguard tells you exactly what went wrong, including the specific Thread IDs and Async Task names involved.
+
+```text
+RaceConditionError: Concurrent access detected on object <list> at 0x...
+Thread-1 (ID: 12345) wrote to object at 10:05:01.001
+Thread-2 (ID: 67890) accessed object at 10:05:01.003
+Missing synchronization lock during access.
+```
+
+### Asyncio & Threading Support
+Raceguard safely tracks state even in hybrid architectures where standard threads and `asyncio` event loops are running simultaneously and modifying the same objects.
+
+### Cross-Platform Verified
+Fully supported and tested across:
+*   **Windows**
+*   **Linux**
+*   **macOS**
+
+---
+
+
 ## Environment Variables
 
 Configure Raceguard without modifying code. Useful for CI/CD pipelines and deployment scripts.
