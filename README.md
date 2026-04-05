@@ -136,6 +136,48 @@ def safe_worker_ctx():
 @with_lock(shared_list)
 def safe_worker_dec():
     shared_list.append(1)
+
+# 5. Lock multiple proxies atomically (consistent ordering prevents deadlocks)
+a = protect([])
+b = protect({})
+with locked(a, b):
+    a.append(1)
+    b["x"] = 1
+```
+
+### Supported Object Types
+
+Raceguard can wrap any mutable Python object:
+
+```python
+protect([])            # list
+protect({})            # dict
+protect(set())         # set
+protect(bytearray())   # bytearray
+protect(MyClass())     # any custom object
+protect(Value(0))      # scalar via Value wrapper
+```
+
+### `protect()` is idempotent
+
+Wrapping an already-protected object returns the **same proxy** — no double-wrapping:
+
+```python
+p1 = protect(my_list)
+p2 = protect(p1)   # same proxy as p1
+assert p1 is p2    # True
+```
+
+### Concurrent Reads Are Safe
+
+Two threads reading simultaneously do **not** trigger a race. Only write/write or read/write conflicts are flagged:
+
+```python
+shared = protect({"val": 42})
+
+# Both threads reading at the same time — no RaceConditionError
+def reader():
+    _ = shared["val"]
 ```
 
 ---
@@ -155,6 +197,22 @@ state = protect({"users": ["Alice", "Bob"]})
 state["users"].append("Charlie")
 ```
 
+### Iterator Race Detection
+
+Raceguard catches writes that happen while another thread is mid-iteration:
+
+```python
+shared = protect([1, 2, 3])
+
+def slow_reader():
+    for item in shared:
+        time.sleep(0.05)   # still iterating...
+
+def writer():
+    time.sleep(0.02)
+    shared.append(4)       # RaceConditionError — write during iteration!
+```
+
 ### Actionable Error Reports
 When a race condition occurs, Raceguard tells you exactly what went wrong, including the specific Thread IDs and Async Task names involved.
 
@@ -162,11 +220,41 @@ When a race condition occurs, Raceguard tells you exactly what went wrong, inclu
 RaceConditionError: Concurrent access detected on object <list> at 0x...
 Thread-1 (ID: 12345) wrote to object at 10:05:01.001
 Thread-2 (ID: 67890) accessed object at 10:05:01.003
+Location: mymodule.py:42 in worker()
 Missing synchronization lock during access.
 ```
 
 ### Asyncio & Threading Support
 Raceguard safely tracks state even in hybrid architectures where standard threads and `asyncio` event loops are running simultaneously and modifying the same objects.
+
+### Strict Mode — Catching Temporally Distant Unsynchronized Writes
+
+By default, Raceguard flags accesses within a time window. With `strict=True`, **any lockless write from a different thread is flagged**, even if it happens much later:
+
+```python
+from raceguard import protect, configure, Value
+
+configure(strict=True)
+shared = protect(Value("initial"))
+
+def thread1():
+    shared.value = "written by T1"  # First write
+
+def thread2():
+    time.sleep(0.5)                 # Waits well beyond the race window...
+    shared.value = "written by T2"  # Still caught! No lock was used.
+```
+
+> **Tip**: In strict mode, use `reset(shared)` to manually clear access history when threads coordinate via a non-lock mechanism like a `queue.Queue`.
+
+```python
+from raceguard import reset
+
+def stage2():
+    result = my_queue.get()   # synchronized via Queue
+    reset(shared)             # tell Raceguard this is a fresh access point
+    shared.value = result     # safe — no false positive
+```
 
 ### Cross-Platform Verified
 Fully supported and tested across:
@@ -208,7 +296,9 @@ configure(
 
 ## Protecting Scalar Values
 
-Use `Value()` to protect simple types like `int`, `float`, or `str` that cannot be proxied directly:
+Use `Value()` to protect simple types like `int`, `float`, or `str` that cannot be proxied directly.
+
+`Value` exposes three access patterns — use whichever fits your style:
 
 ```python
 from raceguard import protect, Value, locked
@@ -217,7 +307,9 @@ counter = protect(Value(0))
 
 def worker():
     with locked(counter):
-        counter.value += 1
+        counter.value += 1   # attribute access
+        counter.set(5)       # setter method
+        x = counter.get()    # getter method
 ```
 
 ---
