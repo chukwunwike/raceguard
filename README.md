@@ -347,7 +347,10 @@ raw = unbind(data)  # Returns the original dict
 
 ## Dev-Mode Overhead
 
-In **production** (`RACEGUARD_ENABLED=0`), `protect()` acts as a completely transparent kill-switch. It bypasses proxy creation entirely and returns your raw object directly, ensuring absolutely **zero overhead** at runtime.
+In **production**, there are two ways to disable Raceguard. Both act as a completely transparent kill-switch that bypasses proxy creation entirely and returns your raw object directly, ensuring absolutely **zero overhead** at runtime:
+
+1. **Outside your code (Recommended):** Run your app with the environment variable `RACEGUARD_ENABLED=0`.
+2. **Inside your code:** Call `configure(enabled=False)` at the very start of your application.
 
 In **development mode**, every attribute access on a protected object passes through the proxy layer, which performs a thread-identity check and a timestamp comparison. This is intentionally lightweight, but it is not free.
 
