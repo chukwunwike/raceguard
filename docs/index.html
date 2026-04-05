@@ -1178,10 +1178,10 @@
         </div>
         <div class="feat">
           <div class="feat-icon red">🛡️</div>
-          <div class="feat-title">Production safe</div>
+          <div class="feat-title">Zero Prod Overhead</div>
           <div class="feat-desc">
-            Features a <strong>faster</strong> core engine and new non-crashing <code>warn</code>/<code>log</code>
-            modes. Set <code>RACEGUARD_ENABLED=0</code> for a true zero-overhead passthrough.
+            Set <code>RACEGUARD_ENABLED=0</code> in production for raw object passthrough. In dev-mode, proxy overhead
+            is mere microseconds per access.
           </div>
         </div>
         <div class="feat">
@@ -1203,10 +1203,10 @@
         </div>
         <div class="feat">
           <div class="feat-icon purple">⏱️</div>
-          <div class="feat-title">Strict Mode</div>
+          <div class="feat-title">Strict Mode for CI</div>
           <div class="feat-desc">
-            Use <code>configure(strict=True)</code> to bypass the time heuristic and catch un-synchronized lockless
-            accesses regardless of time delays.
+            Use <code>configure(strict=True)</code> in CI to catch lockless accesses regardless of time delays.
+            Overcomes the heuristic limits of highly-loaded systems.
           </div>
         </div>
         <div class="feat">
@@ -1362,7 +1362,7 @@ c = <span class="fn">protect</span>(<span class="cl">Counter</span>())
               <div class="step-body">
                 <div class="step-label">Far apart in time?</div>
                 <div class="step-text">Safe. Separated by more than <code>race_window</code> (default 10 ms), treated as
-                  sequential.</div>
+                  sequential. (Note: ABA-style races may evade this heuristic unless Strict Mode is used).</div>
               </div>
             </li>
           </ul>
