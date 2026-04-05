@@ -345,20 +345,6 @@ raw = unbind(data)  # Returns the original dict
 
 ---
 
-## Known Limitations & Blindspots
-
-While Raceguard is highly effective for hunting in-memory thread races, there are fundamental "True Blindspots" that can evade the tracking model:
-
-1.  **Direct Internal Access**: Code that bypasses the proxy layer and accesses the wrapped object's internal reference directly will evade detection.
-2.  **OS Signal Preemption**: Logic executed within asynchronous signal handlers (e.g., `SIGALRM`) runs in the same thread context. This can cause "invisible" races that appear as legitimate single-threaded access.
-3.  **Cross-Process Memory Forks**: OS-level `fork()` clones memory. Raceguard tracks within the memory space of a single process and cannot natively bridge state across process boundaries.
-4.  **C-Extension Logic**: The library cannot observe concurrency that occurs purely within compiled C-extensions (like `numpy` internals or `OpenSSL`) if they bypass the CPython attribute accessors.
-5.  **ABA-style races**: Raceguard tracks the *last* access per object rather than a full happens-before graph. This means a write-write-read sequence (T1 writes → T2 writes → T1 reads) may not be flagged if the race window has expired between steps, even though T1 is silently reading T2's data. Use `strict=True` to close most of this gap.
-
-We recommend using Raceguard as a **heuristic safety net** rather than an absolute formal verifier for these edge cases.
-
----
-
 ## Dev-Mode Overhead
 
 In **production** (`RACEGUARD_ENABLED=0`), `protect()` acts as a completely transparent kill-switch. It bypasses proxy creation entirely and returns your raw object directly, ensuring absolutely **zero overhead** at runtime.
@@ -374,6 +360,20 @@ As a rough guide:
 | Tight hot loop (millions/sec) | Measurable — consider wrapping only during test runs, not benchmarks |
 
 Lazy frame capture means **stack traces are only resolved when a race is actually detected**, keeping the common (no-race) path as fast as possible. If you are profiling performance of concurrent code, run with `RACEGUARD_ENABLED=0` to eliminate all proxy overhead.
+
+---
+
+## Known Limitations & Blindspots
+
+While Raceguard is highly effective for hunting in-memory thread races, there are fundamental "True Blindspots" that can evade the tracking model:
+
+1.  **Direct Internal Access**: Code that bypasses the proxy layer and accesses the wrapped object's internal reference directly will evade detection.
+2.  **OS Signal Preemption**: Logic executed within asynchronous signal handlers (e.g., `SIGALRM`) runs in the same thread context. This can cause "invisible" races that appear as legitimate single-threaded access.
+3.  **Cross-Process Memory Forks**: OS-level `fork()` clones memory. Raceguard tracks within the memory space of a single process and cannot natively bridge state across process boundaries.
+4.  **C-Extension Logic**: The library cannot observe concurrency that occurs purely within compiled C-extensions (like `numpy` internals or `OpenSSL`) if they bypass the CPython attribute accessors.
+5.  **ABA-style races**: Raceguard tracks the *last* access per object rather than a full happens-before graph. This means a write-write-read sequence (T1 writes → T2 writes → T1 reads) may not be flagged if the race window has expired between steps, even though T1 is silently reading T2's data. Use `strict=True` to close most of this gap.
+
+We recommend using Raceguard as a **heuristic safety net** rather than an absolute formal verifier for these edge cases.
 
 ---
 
