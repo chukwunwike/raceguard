@@ -1,5 +1,10 @@
 # Raceguard
 
+[![PyPI version](https://badge.fury.io/py/raceguard.svg)](https://badge.fury.io/py/raceguard)
+[![Python Versions](https://img.shields.io/pypi/pyversions/raceguard.svg)](https://pypi.org/project/raceguard/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Typing: Strict](https://img.shields.io/badge/mypy-strict-success.svg)](https://mypy.readthedocs.io/en/stable/)
+
 **Detect real data races in your code before they become production bugs.**
 
 **[View Live Showcase & Docs ↗](https://chukwunwike.github.io/raceguard/)**
