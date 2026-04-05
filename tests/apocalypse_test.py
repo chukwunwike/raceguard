@@ -1502,13 +1502,7 @@ class TestFinalApocalypse:
 if __name__ == "__main__":
     import pytest
     
-    print("=" * 80)
-    print("RACEGUARD APOCALYPSE TEST")
-    print("Maximum Entropy Mode Activated")
-    print("=" * 80)
-    print(f"Chaos Level: {CHAOS_LEVEL}%")
-    print(f"Apocalypse Mode: {APOCALYPSE_MODE}")
-    print("=" * 80)
+
     
     # Run with maximum verbosity and no capture
     sys.exit(pytest.main([
