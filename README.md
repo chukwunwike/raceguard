@@ -108,9 +108,11 @@ pip install raceguard
 
 Typical usage patterns:
 
-*   **Development**: Run with `configure(mode="raise")` (or `"warn"`, `"log"`) to catch bugs during local testing.
-*   **Continuous Integration**: Use `configure(strict=True)` in CI to ensure zero concurrency regressions.
-*   **Production**: Set `RACEGUARD_ENABLED=0` for a true zero-cost passthrough of your original objects.
+*   **Development** — Run with `configure(mode="raise")` (or `"warn"`, `"log"`) to catch the obvious cases fast with immediate feedback during local testing.
+*   **Continuous Integration** — Use `configure(strict=True)` in CI for correctness assertions. Heuristic mode (`race_window`) depends on timing, which varies under CPU load. **Strict mode is the right tool for CI**: it flags any lockless write from a different thread, regardless of elapsed time.
+*   **Production** — Set `RACEGUARD_ENABLED=0` for a true zero-cost passthrough of your original objects.
+
+> **Heuristic vs. Strict — the key distinction**: The default `race_window` of 10ms catches overlapping accesses quickly, but in a highly loaded system two logically racy writes could be far apart in wall time and slip through. Strict mode removes this ambiguity entirely — if no lock was used, it's a race.
 
 ---
 
@@ -351,8 +353,27 @@ While Raceguard is highly effective for hunting in-memory thread races, there ar
 2.  **OS Signal Preemption**: Logic executed within asynchronous signal handlers (e.g., `SIGALRM`) runs in the same thread context. This can cause "invisible" races that appear as legitimate single-threaded access.
 3.  **Cross-Process Memory Forks**: OS-level `fork()` clones memory. Raceguard tracks within the memory space of a single process and cannot natively bridge state across process boundaries.
 4.  **C-Extension Logic**: The library cannot observe concurrency that occurs purely within compiled C-extensions (like `numpy` internals or `OpenSSL`) if they bypass the CPython attribute accessors.
+5.  **ABA-style races**: Raceguard tracks the *last* access per object rather than a full happens-before graph. This means a write-write-read sequence (T1 writes → T2 writes → T1 reads) may not be flagged if the race window has expired between steps, even though T1 is silently reading T2's data. Use `strict=True` to close most of this gap.
 
 We recommend using Raceguard as a **heuristic safety net** rather than an absolute formal verifier for these edge cases.
+
+---
+
+## Dev-Mode Overhead
+
+In **production** (`RACEGUARD_ENABLED=0`), `protect()` returns the raw object directly — **zero overhead**.
+
+In **development mode**, every attribute access on a protected object passes through the proxy layer, which performs a thread-identity check and a timestamp comparison. This is intentionally lightweight, but it is not free.
+
+As a rough guide:
+
+| Access frequency | Expected impact |
+|---|---|
+| Occasional (locks, shared status flags) | Negligible — use freely |
+| Moderate (per-request shared state) | Minimal — order of microseconds per access |
+| Tight hot loop (millions/sec) | Measurable — consider wrapping only during test runs, not benchmarks |
+
+Lazy frame capture means **stack traces are only resolved when a race is actually detected**, keeping the common (no-race) path as fast as possible. If you are profiling performance of concurrent code, run with `RACEGUARD_ENABLED=0` to eliminate all proxy overhead.
 
 ---
 
