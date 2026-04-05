@@ -12,4 +12,4 @@ COPY . .
 ENV PYTHONPATH=/app/src
 
 # Run the apocalypse test by default
-CMD ["python", "-m", "pytest", "tests/apocalypse_test.py", "-v", "-s"]
+CMD ["python", "-m", "pytest", "tests", "-v", "-s"]
