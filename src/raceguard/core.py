@@ -92,6 +92,10 @@ def configure(
     Args:
         enabled: Enable or disable detection. When disabled, protect()
                  returns the raw object with zero overhead.
+                 **Non-retroactive**: proxies already created with protect()
+                 before calling ``configure(enabled=False)`` will continue
+                 to monitor accesses. To stop monitoring, recreate the proxies
+                 after disabling.
         race_window: Time window in seconds (default 0.01) within which
                      concurrent accesses are considered a race.
         strict: If True, bypass the race_window heuristic and flag any un-synchronized
@@ -556,8 +560,6 @@ class _ProtectedProxy:
 
     # --- Context manager ---
 
-    # --- Context manager ---
-
     def __enter__(self):
         object.__getattribute__(self, "_rg_check")("read")
         object.__getattribute__(self, "_rg_lock").acquire()
@@ -810,12 +812,15 @@ class _ProtectedProxy:
     # --- Numeric conversions ---
 
     def __int__(self) -> int:
+        object.__getattribute__(self, "_rg_check")("read")
         return int(object.__getattribute__(self, "_rg_obj"))
 
     def __float__(self) -> float:
+        object.__getattribute__(self, "_rg_check")("read")
         return float(object.__getattribute__(self, "_rg_obj"))
 
     def __index__(self) -> int:
+        object.__getattribute__(self, "_rg_check")("read")
         return object.__getattribute__(self, "_rg_obj").__index__()
 
     def __abs__(self) -> Any:
@@ -881,16 +886,17 @@ class _ProtectedProxy:
     # --- String ---
 
     def __repr__(self) -> str:
-        object.__getattribute__(self, "_rg_check")("read")
+        # Intentionally skips _rg_check: repr() is a diagnostic tool and
+        # must never influence the detection state machine or trigger false alarms.
         obj = object.__getattribute__(self, "_rg_obj")
         return f"<Protected {type(obj).__name__}: {obj!r}>"
 
     def __str__(self) -> str:
-        object.__getattribute__(self, "_rg_check")("read")
+        # Same rationale as __repr__: string coercion is observational, not a data access.
         return str(object.__getattribute__(self, "_rg_obj"))
 
     def __format__(self, format_spec: str) -> str:
-        object.__getattribute__(self, "_rg_check")("read")
+        # Same rationale as __repr__.
         return format(object.__getattribute__(self, "_rg_obj"), format_spec)
 
     def __bytes__(self) -> bytes:
