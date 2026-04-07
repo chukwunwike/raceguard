@@ -73,6 +73,7 @@ _CONFIG: dict[str, Any] = {
     "mode": os.environ.get("RACEGUARD_MODE", "raise"),
     "max_warnings": 1000,
 }
+_config_lock = threading.Lock()
 
 # Global warnings collector for "warn" mode
 warnings: list[RaceConditionWarning] = []
@@ -103,23 +104,25 @@ def configure(
         mode: Detection mode — "raise" (default), "warn", or "log".
         max_warnings: Max warnings to collect in warn mode (default 1000).
     """
-    if enabled is not None:
-        _CONFIG["enabled"] = enabled
-    if race_window is not None:
-        _CONFIG["race_window"] = race_window
-    if strict is not None:
-        _CONFIG["strict"] = strict
-    if mode is not None:
-        if mode not in ("raise", "warn", "log"):
-            raise ValueError(f"Invalid mode {mode!r}. Use 'raise', 'warn', or 'log'.")
-        _CONFIG["mode"] = mode
-    if max_warnings is not None:
-        _CONFIG["max_warnings"] = max_warnings
+    with _config_lock:
+        if enabled is not None:
+            _CONFIG["enabled"] = enabled
+        if race_window is not None:
+            _CONFIG["race_window"] = race_window
+        if strict is not None:
+            _CONFIG["strict"] = strict
+        if mode is not None:
+            if mode not in ("raise", "warn", "log"):
+                raise ValueError(f"Invalid mode {mode!r}. Use 'raise', 'warn', or 'log'.")
+            _CONFIG["mode"] = mode
+        if max_warnings is not None:
+            _CONFIG["max_warnings"] = max_warnings
 
 
 def get_config() -> dict[str, Any]:
     """Return a copy of the current configuration."""
-    return dict(_CONFIG)
+    with _config_lock:
+        return dict(_CONFIG)
 
 
 def clear_warnings() -> list[RaceConditionWarning]:
@@ -239,6 +242,19 @@ def _wrap_as_write(method: Any, proxy: "_ProtectedProxy") -> Any:
     return _checked
 
 
+def _wrap_dict_view(method: Any, proxy: "_ProtectedProxy") -> Any:
+    @wraps(method)
+    def _wrapper(*args: Any, **kwargs: Any) -> Any:
+        object.__getattribute__(proxy, "_rg_check")("read")
+        view = method(*args, **kwargs)
+        return _safe_protect(
+            view,
+            lock=object.__getattribute__(proxy, "_rg_lock"),
+            memory=object.__getattribute__(proxy, "_rg_memory")
+        )
+    return _wrapper
+
+
 _INTERNAL: frozenset[str] = frozenset({
     "_rg_obj",
     "_rg_lock",
@@ -317,6 +333,12 @@ def _format_race_message(
 
 class _SyncMemory:
     """Shared race-detection state used across a hierarchy of proxies."""
+    
+    __slots__ = (
+        "last_actor", "last_time", "last_was_locked", "last_mode",
+        "last_frame", "last_location", "state_lock"
+    )
+
     def __init__(self) -> None:
         self.last_actor: Any = None
         self.last_time: float = 0.0
@@ -359,6 +381,7 @@ class _ProxyIterator:
 
 
 class _ProtectedProxy:
+    __slots__ = ("_rg_obj", "_rg_lock", "_rg_memory")
 
     def __init__(self, obj: Any, lock: threading.Lock | None = None, memory: _SyncMemory | None = None) -> None:
         object.__setattr__(self, "_rg_obj", obj)
@@ -489,6 +512,8 @@ class _ProtectedProxy:
         if callable(attr):
             if _is_mutating(obj, name):
                 return _wrap_as_write(attr, self)
+            elif isinstance(obj, dict) and name in ("keys", "values", "items"):
+                return _wrap_dict_view(attr, self)
             else:
                 object.__getattribute__(self, "_rg_check")("read")
             return attr
@@ -561,7 +586,9 @@ class _ProtectedProxy:
     # --- Context manager ---
 
     def __enter__(self):
-        object.__getattribute__(self, "_rg_check")("read")
+        # No _rg_check here: acquiring the lock IS the synchronization event.
+        # A pre-check tagged "read" would incorrectly suppress concurrent-entry
+        # detection (read+read is always safe, but concurrent __enter__ is not).
         object.__getattribute__(self, "_rg_lock").acquire()
         obj = object.__getattribute__(self, "_rg_obj")
         try:
@@ -571,7 +598,8 @@ class _ProtectedProxy:
             raise
 
     def __exit__(self, *args: Any) -> Any:
-        object.__getattribute__(self, "_rg_check")("read")
+        # No _rg_check here: the lock is still held; releasing it ends the
+        # guarded region. Checking here would be redundant noise.
         obj = object.__getattribute__(self, "_rg_obj")
         try:
             return obj.__exit__(*args)

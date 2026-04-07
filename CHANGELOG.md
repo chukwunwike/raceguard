@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-04-06
+
+### Fixed
+- `__repr__`, `__str__`, and `__format__` no longer call `_rg_check`. These are
+  diagnostic/observational operations and must not influence the detection state
+  machine or trigger false-positive race errors in hot concurrent paths.
+- `__int__`, `__float__`, and `__index__` now call `_rg_check("read")`. Previously
+  these bypassed detection entirely, allowing silent unmonitored numeric reads.
+- `__enter__` and `__exit__` no longer call `_rg_check`. Lock acquisition in
+  `__enter__` is itself the synchronization event; a redundant `"read"` pre-check
+  incorrectly suppressed concurrent-entry detection (read+read was treated as safe).
+- Removed duplicate `# --- Context manager ---` section comment.
+- `configure()` docstring now explicitly documents that `enabled=False` is
+  non-retroactive: proxies created before the call continue to monitor accesses.
+
 ## [0.2.0] - 2026-04-02
 
 ### Added

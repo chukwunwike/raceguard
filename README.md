@@ -373,15 +373,18 @@ Lazy frame capture means **stack traces are only resolved when a race is actuall
 
 ## Known Limitations & Blindspots
 
-While Raceguard is highly effective for hunting in-memory thread races, there are fundamental "True Blindspots" that can evade the tracking model:
+While Raceguard is highly effective for hunting in-memory thread races, there are fundamental "True Blindspots" governed by the physical and logical limits of high-level proxying:
 
-1.  **Direct Internal Access**: Code that bypasses the proxy layer and accesses the wrapped object's internal reference directly will evade detection.
-2.  **OS Signal Preemption**: Logic executed within asynchronous signal handlers (e.g., `SIGALRM`) runs in the same thread context. This can cause "invisible" races that appear as legitimate single-threaded access.
-3.  **Cross-Process Memory Forks**: OS-level `fork()` clones memory. Raceguard tracks within the memory space of a single process and cannot natively bridge state across process boundaries.
-4.  **C-Extension Logic**: The library cannot observe concurrency that occurs purely within compiled C-extensions (like `numpy` internals or `OpenSSL`) if they bypass the CPython attribute accessors.
-5.  **ABA-style races**: Raceguard tracks the *last* access per object rather than a full happens-before graph. This means a write-write-read sequence (T1 writes → T2 writes → T1 reads) may not be flagged if the race window has expired between steps, even though T1 is silently reading T2's data. Use `strict=True` to close most of this gap.
+1.  **Direct Memory Manipulation (Ghost Writes)**: Raceguard relies on Python's `__setattr__` and `__getattribute__` hooks. It **cannot see** memory changes made via:
+    *   **C-Extensions**: Libraries like `numpy` or `lxml` that write directly to C-level pointers.
+    *   **Buffer Access**: Using `ctypes` or `mmap` to modify memory addresses directly.
+2.  **Multi-Object Transactions (Semantic Atomicity)**: Raceguard monitors individual objects, not logical transactions. If a race involves maintaining an invariant across *multiple* objects (e.g., keeping Account A and Account B balanced during a transfer), Raceguard will remain silent if each object is accessed safely in sequence.
+3.  **OS External State (TOCTOU)**: It cannot detect races between the Python process and the **Operating System**. For example, a "Time-of-Check to Time-of-Use" race on the file system (checking a file exists before opening it) is outside Raceguard's scope.
+4.  **Inter-Process Contention**: Raceguard's tracking is local to the current process. It cannot detect races between two completely separate program instances (e.g., two different scripts racing for a database record).
+5.  **Per-Interpreter Shared Memory (Python 3.12+)**: With PEP 684, multiple interpreters can have their own GIL. If they share a raw memory buffer, they can have true parallel data races that bypass the interpreter-local proxy.
+6.  **Intentional Observer Blindspots**: To prevent recursion and "Heisenbugs," the library intentionally ignores metadata calls like `repr()`, `str()`, `id()`, and `type()`.
 
-We recommend using Raceguard as a **heuristic safety net** rather than an absolute formal verifier for these edge cases.
+We recommend using Raceguard as a **Heuristic Safety Net** for application logic. For hardware-level or kernel-level verification, consider low-level tools like **ThreadSanitizer**, **Helgrind**, or **eBPF**.
 
 ---
 
