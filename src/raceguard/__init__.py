@@ -11,6 +11,7 @@ from .core import (
     Value,
     reset,
     unbind,
+    AtomicGroup,
 )
 
 __author__ = "Chukwunwike Obodo"
@@ -29,4 +30,5 @@ __all__ = [
     "Value",
     "reset",
     "unbind",
+    "AtomicGroup",
 ]

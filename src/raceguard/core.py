@@ -138,39 +138,51 @@ def clear_warnings() -> list[RaceConditionWarning]:
 # =========================================================================
 
 def _acquire_all(proxies: tuple) -> list[threading.Lock]:
-    """Acquire locks for multiple proxies in a consistent order to avoid deadlocks."""
-    locks = sorted(
-        (object.__getattribute__(p, "_rg_lock") for p in proxies),
-        key=id,
-    )
+    """Acquire locks for multiple proxies or AtomicGroups in a consistent order to avoid deadlocks."""
+    all_proxies = []
+    for p in proxies:
+        if isinstance(p, AtomicGroup):
+            all_proxies.extend(object.__getattribute__(p, "_rg_proxies"))
+        else:
+            all_proxies.append(p)
+            
+    # Unique locks only (some objects may overlap in groups)
+    unique_locks = {object.__getattribute__(p, "_rg_lock") for p in all_proxies}
+    locks = sorted(unique_locks, key=id)
+    
     acquired: list[threading.Lock] = []
     try:
+        # Mark all groups as active before acquiring locks to ensure
+        # atomicity of the 'locked' state for external observers
+        for p in proxies:
+            if isinstance(p, AtomicGroup):
+                object.__getattribute__(p, "_enter_group")()
+                
         for lock in locks:
             lock.acquire()
             acquired.append(lock)
     except Exception:
         for lock in reversed(acquired):
             lock.release()
+        for p in proxies:
+            if isinstance(p, AtomicGroup):
+                try: object.__getattribute__(p, "_exit_group")()
+                except: pass
         raise
     return acquired
 
 
-def _release_all(acquired: list[threading.Lock]) -> None:
+def _release_all(acquired: list[threading.Lock], proxies: tuple) -> None:
     for lock in reversed(acquired):
         lock.release()
+    for p in proxies:
+        if isinstance(p, AtomicGroup):
+            object.__getattribute__(p, "_exit_group")()
 
 
 def with_lock(*proxies: Any):
     """Decorator that acquires the lock(s) of the given protected proxy(ies)
     before calling the decorated function, and releases afterward.
-
-    Example::
-
-        results = protect([])
-
-        @with_lock(results)
-        def add_result(val):
-            results.append(val)
     """
     def decorator(func):
         @wraps(func)
@@ -179,7 +191,7 @@ def with_lock(*proxies: Any):
             try:
                 return func(*args, **kwargs)
             finally:
-                _release_all(acquired)
+                _release_all(acquired, proxies)
         return wrapper
     return decorator
 
@@ -187,20 +199,44 @@ def with_lock(*proxies: Any):
 @contextlib.contextmanager
 def locked(*proxies: Any):
     """Context manager that acquires the lock(s) of the given protected
-    proxy(ies), yielding control once all locks are held.
-
-    Example::
-
-        shared = protect({'count': 0})
-
-        with locked(shared):
-            shared['count'] += 1
+    proxy(ies) or AtomicGroups, yielding control once all locks are held.
     """
     acquired = _acquire_all(proxies)
     try:
         yield
     finally:
-        _release_all(acquired)
+        _release_all(acquired, proxies)
+
+
+class AtomicGroup:
+    """A logical grouping of protected proxies that must stay in sync."""
+    
+    __slots__ = ("_rg_proxies", "_rg_lock_owner", "_rg_state_lock")
+
+    def __init__(self, *proxies: Any) -> None:
+        self._rg_proxies = tuple(proxies)
+        self._rg_lock_owner = None
+        self._rg_state_lock = threading.Lock()
+        
+        # Link proxies to this group
+        for p in proxies:
+            if not isinstance(p, _ProtectedProxy):
+                raise TypeError(f"AtomicGroup only accepts protected proxies, got {type(p)}")
+            groups = object.__getattribute__(p, "_rg_groups")
+            groups.append(self)
+
+    def _enter_group(self) -> None:
+        current_actor = (threading.current_thread(), None)
+        try:
+            current_actor = (current_actor[0], asyncio.current_task())
+        except RuntimeError: pass
+        
+        with self._rg_state_lock:
+            self._rg_lock_owner = current_actor
+
+    def _exit_group(self) -> None:
+        with self._rg_state_lock:
+            self._rg_lock_owner = None
 
 
 # =========================================================================
@@ -258,6 +294,8 @@ def _wrap_dict_view(method: Any, proxy: "_ProtectedProxy") -> Any:
 _INTERNAL: frozenset[str] = frozenset({
     "_rg_obj",
     "_rg_lock",
+    "_rg_groups",
+    "_rg_memory",
     "_rg_last_actor",
     "_rg_last_time",
     "_rg_last_was_locked",
@@ -381,12 +419,18 @@ class _ProxyIterator:
 
 
 class _ProtectedProxy:
-    __slots__ = ("_rg_obj", "_rg_lock", "_rg_memory")
-
-    def __init__(self, obj: Any, lock: threading.Lock | None = None, memory: _SyncMemory | None = None) -> None:
+    __slots__ = ("_rg_obj", "_rg_lock", "_rg_memory", "_rg_groups")
+ 
+    def __init__(
+        self, obj: Any, 
+        lock: threading.Lock | None = None, 
+        memory: _SyncMemory | None = None,
+        groups: list[AtomicGroup] | None = None,
+    ) -> None:
         object.__setattr__(self, "_rg_obj", obj)
         object.__setattr__(self, "_rg_lock", lock if lock is not None else threading.RLock())
         object.__setattr__(self, "_rg_memory", memory if memory is not None else _SyncMemory())
+        object.__setattr__(self, "_rg_groups", groups if groups is not None else [])
 
     @property
     def __class__(self):
@@ -429,6 +473,34 @@ class _ProtectedProxy:
                 mem.last_mode = mode
                 mem.last_frame = frame
                 mem.last_location = None
+
+            # Rule 0: Multi-Object Group Contention (Semantic Race)
+            # If this object is part of one or more groups, and ANY group IS locked 
+            # by someone else, this access is logically unsafe.
+            groups: list[AtomicGroup] = object.__getattribute__(self, "_rg_groups")
+            for group in groups:
+                owner = object.__getattribute__(group, "_rg_lock_owner")
+                if owner is not None and owner != current_actor:
+                    # Semantic race: actor touching group member while group is "closed"
+                    current_frame = _get_caller_frame()
+                    cur_loc = _resolve_location(current_frame)
+                    obj = object.__getattribute__(self, "_rg_obj")
+                    msg = (
+                        f"\n{'-' * 60}\n"
+                        f"  SEMANTIC Race condition detected!\n"
+                        f"{'-' * 60}\n"
+                        f"  Object       : {type(obj).__name__} (Group Member)\n"
+                        f"  Violation    : Accessing member while AtomicGroup is locked by another thread.\n"
+                        f"{'-' * 60}\n"
+                        f"  > Current access:\n"
+                        f"      Thread   : {threading.current_thread().name}\n"
+                        f"      Location : {cur_loc[0]}:{cur_loc[1]}\n"
+                        f"  > Group Owner:\n"
+                        f"      Thread   : {owner[0].name}\n"
+                        f"{'-' * 60}\n"
+                        f"  Fix: wrap the access in 'with locked(group):'.\n"
+                    )
+                    raise RaceConditionError(msg)
 
             # Rule 1: First access or same actor — always safe
             if mem.last_actor is None or mem.last_actor == current_actor:
