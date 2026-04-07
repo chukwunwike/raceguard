@@ -1,6 +1,6 @@
 # Raceguard
 
-[![PyPI version](https://badge.fury.io/py/raceguard.svg)](https://badge.fury.io/py/raceguard)
+[![PyPI version](https://img.shields.io/pypi/v/raceguard.svg?style=flat&color=blue)](https://pypi.org/project/raceguard/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/raceguard.svg)](https://pypi.org/project/raceguard/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Typing: Strict](https://img.shields.io/badge/mypy-strict-success.svg)](https://mypy.readthedocs.io/en/stable/)

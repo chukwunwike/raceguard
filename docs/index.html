@@ -1073,7 +1073,7 @@
   <!-- ── HERO ── -->
   <section class="hero">
     <div class="hero-top">
-      <div class="hero-pill"><span class="pip">NEW</span> v0.2.0 — Production-ready race detector</div>
+      <div class="hero-pill"><span class="pip">NEW</span> v0.2.1 — Production-ready race detector</div>
       <h1>Find data races<br><span class="gradient">before they find you.</span></h1>
       <p class="hero-sub">
         Wrap any shared object with <code>protect()</code>. Unsynchronized concurrent
@@ -1195,12 +1195,10 @@
           </div>
         </div>
         <div class="feat">
-          <div class="feat-icon green">🧱</div>
-          <div class="feat-title">Type safety built-in</div>
+          <div class="feat-icon green">🔗</div>
+          <div class="feat-title">Semantic Race Protection</div>
           <div class="feat-desc">
-            Refuses to wrap immutable primitives (<code>int</code>, <code>str</code>,
-            <code>tuple</code>) to prevent semantic bugs. Wrap them universally via the <code>Value</code> wrapper
-            instead.
+            Group multiple proxied objects under a single <code>AtomicGroup</code> to enforce strict joint transactional safety, preventing logical blindspots and <strong>TOCTOU</strong> (Time-Of-Check to Time-Of-Use) races.
           </div>
         </div>
         <div class="feat">
@@ -1283,22 +1281,22 @@ threads = [
         </div>
         <div class="code-card good reveal">
           <div class="code-header">
-            <span class="code-label">context manager + shared lock</span>
+            <span class="code-label">context mgr + atomic group</span>
             <span class="code-lang">python</span>
           </div>
-          <pre><span class="kw">from</span> raceguard <span class="kw">import</span> protect, locked
+          <pre><span class="kw">from</span> raceguard <span class="kw">import</span> protect, locked, AtomicGroup
 
-shared = <span class="fn">protect</span>({<span class="st">'count'</span>: <span class="nu">0</span>})
+a = <span class="fn">protect</span>([])
+b = <span class="fn">protect</span>({})
 
-<span class="kw">def</span> <span class="fn">increment</span>():
-    <span class="kw">for</span> _ <span class="kw">in</span> range(<span class="nu">1000</span>):
-        <span class="kw">with</span> <span class="fn">locked</span>(shared):
-            shared[<span class="st">'count'</span>] += <span class="nu">1</span>
+<span class="cm"># bind objects transactionally</span>
+group = <span class="fn">AtomicGroup</span>(a, b)
 
-<span class="cm"># two objects, one external lock</span>
-ext = threading.Lock()
-a = <span class="fn">protect</span>([], lock=ext)
-b = <span class="fn">protect</span>({}, lock=ext)</pre>
+<span class="kw">def</span> <span class="fn">transfer</span>():
+    <span class="kw">with</span> <span class="fn">locked</span>(group):
+        a.append(<span class="nu">1</span>)
+        b[<span class="st">'x'</span>] = <span class="nu">1</span>
+    <span class="cm"># locks automatically resolve</span></pre>
         </div>
         <div class="code-card good reveal">
           <div class="code-header">
@@ -1463,7 +1461,7 @@ c = <span class="fn">protect</span>(<span class="cl">Counter</span>())
   <!-- ── Footer ── -->
   <footer>
     <div class="footer-brand"><strong>race</strong>guard</div>
-    <div class="footer-meta">MIT License · v0.2.0 · Python ≥3.7</div>
+    <div class="footer-meta">MIT License · v0.2.1 · Python ≥3.10</div>
   </footer>
 
   <script>
