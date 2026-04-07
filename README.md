@@ -85,6 +85,7 @@ Raceguard is designed for **real developer workflows**, not just theory.
 *   **Flexible Detection**: Native support for `raise`, `warn`, and `log` modes to fit your testing strategy.
 *   **Zero Production Overhead**: Set `RACEGUARD_ENABLED=0` to completely bypass the proxy in live environments.
 *   **Async-Aware**: Seamlessly tracks races between mixed `asyncio` tasks and standard threads.
+*   **Transactional Consistency**: Uses `AtomicGroup` to enforce logic invariants across multiple objects, preventing "Semantic Races."
 *   **Deep Protection**: Automatically proxies nested mutable structures, including full interception of Python's dunder methods and context managers.
 *   **Rich Reports**: Tells you exactly which threads accessed the object, at what time, and where to fix it.
 
@@ -150,6 +151,18 @@ b = protect({})
 with locked(a, b):
     a.append(1)
     b["x"] = 1
+
+# 6. Group objects for transactional safety (Automatic semantic race detection)
+from raceguard import AtomicGroup
+group = AtomicGroup(a, b)
+
+# This is safe
+with locked(group):
+    a.append(2)
+
+# This triggers a RaceConditionError if another thread holds the group lock
+# even if the individual lock for 'a' is free!
+_ = a[0]
 ```
 
 ### Supported Object Types
@@ -261,6 +274,30 @@ def stage2():
     result = my_queue.get()   # synchronized via Queue
     reset(shared)             # tell Raceguard this is a fresh access point
     shared.value = result     # safe — no false positive
+```
+
+### AtomicGroups — Enforcing Logical Transactions
+
+When multiple objects must stay in sync (e.g., Account A and B), individual locks are not enough. If Thread 1 is moving money from A to B, Thread 2 should not be allowed to read *either* A or B until the transaction is complete.
+
+`AtomicGroup` creates a shared safety boundary:
+
+```python
+from raceguard import protect, AtomicGroup, locked
+
+acc_a = protect(Account(100))
+acc_b = protect(Account(0))
+bank = AtomicGroup(acc_a, acc_b)
+
+def transfer(amount):
+    with locked(bank):
+        acc_a.balance -= amount
+        acc_b.balance += amount
+
+def audit():
+    # Attempting to read acc_a while transfer() is running 
+    # will trigger a RaceConditionError!
+    total = acc_a.balance + acc_b.balance
 ```
 
 ### Cross-Platform Verified
@@ -378,7 +415,7 @@ While Raceguard is highly effective for hunting in-memory thread races, there ar
 1.  **Direct Memory Manipulation (Ghost Writes)**: Raceguard relies on Python's `__setattr__` and `__getattribute__` hooks. It **cannot see** memory changes made via:
     *   **C-Extensions**: Libraries like `numpy` or `lxml` that write directly to C-level pointers.
     *   **Buffer Access**: Using `ctypes` or `mmap` to modify memory addresses directly.
-2.  **Multi-Object Transactions (Semantic Atomicity)**: Raceguard monitors individual objects, not logical transactions. If a race involves maintaining an invariant across *multiple* objects (e.g., keeping Account A and Account B balanced during a transfer), Raceguard will remain silent if each object is accessed safely in sequence.
+2.  **Unprotected Semantic Invariants**: While `AtomicGroup` helps detect races on multi-object transactions, it only works if the developer correctly groups the relevant objects. Logic races on hidden or non-proxied state (like a global internal C-level counter) remain invisible.
 3.  **OS External State (TOCTOU)**: It cannot detect races between the Python process and the **Operating System**. For example, a "Time-of-Check to Time-of-Use" race on the file system (checking a file exists before opening it) is outside Raceguard's scope.
 4.  **Inter-Process Contention**: Raceguard's tracking is local to the current process. It cannot detect races between two completely separate program instances (e.g., two different scripts racing for a database record).
 5.  **Per-Interpreter Shared Memory (Python 3.12+)**: With PEP 684, multiple interpreters can have their own GIL. If they share a raw memory buffer, they can have true parallel data races that bypass the interpreter-local proxy.

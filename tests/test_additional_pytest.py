@@ -58,6 +58,8 @@ class TestAdditionalEdges:
 
         # At least one of the threads should hit a RaceConditionError
         time.sleep(0.6) # wait for race window
+        from raceguard import reset
+        reset(shared)
         assert set(shared.keys()) == set()
         assert len(errors) > 0
 
