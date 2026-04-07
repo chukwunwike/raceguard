@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed duplicate `# --- Context manager ---` section comment.
 - `configure()` docstring now explicitly documents that `enabled=False` is
   non-retroactive: proxies created before the call continue to monitor accesses.
+- Updated `tests/proof/test_semantic_race.py` to properly document the `AtomicGroup` 
+  solution for cross-object semantic invariant violations, adding sequential locking proofs.
 
 ## [0.2.0] - 2026-04-02
 
